@@ -6,7 +6,9 @@
 
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { access, mkdir, readFile } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import path from 'node:path';
 import process from 'node:process';
 import { createCoder } from '@headless-coders/core/factory';
 import type { PromptInput, RunResult } from '@headless-coders/core/types';
@@ -28,6 +30,55 @@ const CLAUDE_TIMEOUT_MS = Number.parseInt(process.env.CLAUDE_TEST_TIMEOUT_MS ?? 
  */
 async function ensureWorkspace(dir: string): Promise<void> {
   await mkdir(dir, { recursive: true });
+}
+
+/**
+ * Loads Claude configuration variables stored in the workspace settings directory.
+ *
+ * Args:
+ *   workspace: Absolute path where the `.claude` folder resides.
+ *
+ * Returns:
+ *   Promise that resolves once environment variables are merged into `process.env`.
+ *
+ * Raises:
+ *   Error: Propagated when settings files exist but contain invalid JSON.
+ */
+async function loadClaudeEnvironment(workspace: string): Promise<void> {
+  const configDir = path.join(workspace, '.claude');
+  const configFiles = ['settings.json', 'settings.local.json'];
+
+  await mkdir(configDir, { recursive: true });
+  process.env.CLAUDE_CONFIG_DIR = configDir;
+
+  for (const file of configFiles) {
+    const fullPath = path.join(configDir, file);
+    try {
+      await access(fullPath, fsConstants.R_OK);
+    } catch {
+      continue;
+    }
+
+    const raw = await readFile(fullPath, 'utf8');
+    if (!raw.trim()) continue;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      throw new Error(`Failed to parse Claude settings file at ${fullPath}`, {
+        cause: error instanceof Error ? error : undefined,
+      });
+    }
+
+    const envBlock = (parsed as { env?: Record<string, string> })?.env;
+    if (!envBlock) continue;
+    for (const [key, value] of Object.entries(envBlock)) {
+      if (typeof value === 'string') {
+        process.env[key] = value;
+      }
+    }
+  }
 }
 
 /**
@@ -94,19 +145,23 @@ async function withinTimeout<T>(promise: Promise<T>, timeoutMs: number, message:
  *   Error: When prerequisites are missing or Claude fails to respond.
  */
 async function runClaudeScenario(t: TestContext): Promise<void> {
-  if (!process.env.ANTHROPIC_API_KEY && !process.env.CLAUDE_API_KEY) {
+  await ensureWorkspace(CLAUDE_WORKSPACE);
+  await loadClaudeEnvironment(CLAUDE_WORKSPACE);
+
+  const hasAnthropicKey =
+    !!process.env.ANTHROPIC_API_KEY || !!process.env.CLAUDE_API_KEY || !!process.env.ANTHROPIC_API_TOKEN;
+  const hasBedrockToken = !!process.env.AWS_BEARER_TOKEN_BEDROCK;
+
+  if (!hasAnthropicKey && !hasBedrockToken) {
     t.skip(
-      'Skipping Claude integration test because ANTHROPIC_API_KEY or CLAUDE_API_KEY is not configured.',
+      'Skipping Claude integration test because Claude API credentials or Bedrock token are unavailable.',
     );
     return;
   }
 
-  await ensureWorkspace(CLAUDE_WORKSPACE);
-
   const coder = createCoder('claude', {
     workingDirectory: CLAUDE_WORKSPACE,
     model: process.env.CLAUDE_TEST_MODEL,
-    continue: true,
   });
   const thread = await coder.startThread();
 
@@ -121,11 +176,21 @@ async function runClaudeScenario(t: TestContext): Promise<void> {
     });
   }
 
-  const result = await withinTimeout<RunResult>(
-    coder.run(thread, buildPrompt(CLAUDE_WORKSPACE), { streamPartialMessages: true }),
-    CLAUDE_TIMEOUT_MS,
-    `Claude integration test timed out after ${CLAUDE_TIMEOUT_MS}ms.`,
-  );
+  let result: RunResult;
+  try {
+    result = await withinTimeout<RunResult>(
+      coder.run(thread, buildPrompt(CLAUDE_WORKSPACE), { streamPartialMessages: true }),
+      CLAUDE_TIMEOUT_MS,
+      `Claude integration test timed out after ${CLAUDE_TIMEOUT_MS}ms.`,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/credit balance is too low/i.test(message)) {
+      t.skip('Skipping Claude integration test because the credit balance is insufficient.');
+      return;
+    }
+    throw error;
+  }
 
   assert.ok(result.text && result.text.trim().length > 0, 'Claude should return a non-empty reply.');
   if (typeof thread.id === 'string') {

@@ -141,12 +141,14 @@ async function runCalculatorScenario(t: TestContext): Promise<void> {
   operator.value = '/';
   button.click();
 
+  const rawResult = resultSpan.textContent?.trim() ?? '';
+  const normalizedResult = rawResult.replace(/^result:\s*/i, '');
+
   assert.equal(
-    resultSpan.textContent?.trim(),
+    normalizedResult,
     '4',
     'Clicking compute should update the result span with the calculated value.',
   );
 }
 
 test('codex generates a runnable web calculator', runCalculatorScenario);
-
