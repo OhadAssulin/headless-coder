@@ -32,7 +32,6 @@ export interface StartOpts {
   includeDirectories?: string[];
   yolo?: boolean;
   permissionMode?: string;
-  allowDangerouslySkipPermissions?: boolean;
   permissionPromptToolName?: string;
 }
 

@@ -173,8 +173,7 @@ async function runClaudeScenario(t: TestContext): Promise<void> {
     workingDirectory: CLAUDE_WORKSPACE,
     model: process.env.CLAUDE_TEST_MODEL,
     allowedTools: ['Write', 'Edit', 'Read', 'NotebookEdit'],
-    permissionMode: 'acceptEdits',
-    allowDangerouslySkipPermissions: true,
+    permissionMode: 'bypassPermissions',
   });
   const thread = await coder.startThread();
 
