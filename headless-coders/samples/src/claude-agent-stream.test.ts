@@ -4,7 +4,7 @@
 
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, rm, cp } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import { constants as fsConstants } from 'node:fs';
 import path from 'node:path';
@@ -30,6 +30,7 @@ async function ensureWorkspace(dir: string): Promise<void> {
  */
 async function loadClaudeEnvironment(dir: string): Promise<void> {
   const configDir = path.join(dir, '.claude');
+  await hydrateClaudeConfig(configDir);
   await mkdir(configDir, { recursive: true });
   process.env.CLAUDE_CONFIG_DIR = configDir;
   const configs = ['settings.json', 'settings.local.json'];
@@ -49,6 +50,19 @@ async function loadClaudeEnvironment(dir: string): Promise<void> {
       }
     }
   }
+}
+
+/**
+ * Copies Claude configuration from a known source directory when present.
+ */
+async function hydrateClaudeConfig(targetDir: string): Promise<void> {
+  const sourceDir = process.env.CLAUDE_STREAM_CONFIG_SOURCE ?? '/tmp/headless-coder/test_claude/.claude';
+  try {
+    await access(sourceDir, fsConstants.R_OK);
+  } catch {
+    return;
+  }
+  await cp(sourceDir, targetDir, { recursive: true, force: true });
 }
 
 /**
