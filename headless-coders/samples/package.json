@@ -8,15 +8,10 @@
     "src"
   ],
   "scripts": {
-    "test": "tsx --test src/codex-web-calculator.test.ts"
+    "test": "npm exec -- tsx --test src/codex-web-calculator.test.ts"
   },
   "dependencies": {
-    "@headless-coders/core": "workspace:*",
+    "@headless-coders/core": "file:../packages/core",
     "jsdom": "^24.0.0"
-  },
-  "devDependencies": {
-    "@types/jsdom": "^21.1.7",
-    "tsx": "^4.19.1",
-    "typescript": "^5.4.0"
   }
 }

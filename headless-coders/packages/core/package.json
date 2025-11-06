@@ -19,12 +19,11 @@
     "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "@headless-coders/codex-adapter": "workspace:*",
-    "@headless-coders/claude-adapter": "workspace:*",
-    "@headless-coders/gemini-adapter": "workspace:*"
+    "@headless-coders/codex-adapter": "file:../codex-adapter",
+    "@headless-coders/claude-adapter": "file:../claude-adapter",
+    "@headless-coders/gemini-adapter": "file:../gemini-adapter"
   },
   "devDependencies": {
     "typescript": "^5.4.0"
   }
 }
-

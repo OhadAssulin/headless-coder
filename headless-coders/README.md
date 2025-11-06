@@ -21,3 +21,11 @@ const result = await coder.run(thread, 'Generate a test plan for the API gateway
 console.log(result.text);
 ```
 
+## Development
+
+- Install dependencies with your preferred package manager:
+  - `npm install`
+  - or `pnpm install`
+- Run workspace builds: `npm run build` or `pnpm run build`
+- Execute tests across packages: `npm run test` or `pnpm run test`
+

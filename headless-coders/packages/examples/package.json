@@ -12,10 +12,9 @@
     "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "@headless-coders/core": "workspace:*"
+    "@headless-coders/core": "file:../core"
   },
   "devDependencies": {
     "typescript": "^5.4.0"
   }
 }
-

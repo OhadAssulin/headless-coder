@@ -8,13 +8,13 @@
     "samples"
   ],
   "scripts": {
-    "build": "pnpm -r exec pnpm run build",
+    "build": "node ./scripts/run-workspaces.mjs build",
     "lint": "eslint .",
-    "test": "pnpm -r exec pnpm test"
+    "test": "node ./scripts/run-workspaces.mjs test"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",
+    "tsx": "^4.19.1",
     "typescript": "^5.4.0"
-  },
-  "packageManager": "pnpm@8.15.5"
+  }
 }
