@@ -70,24 +70,77 @@ export interface ThreadHandle {
 /**
  * Streaming events emitted by adapters during live runs.
  */
-export type StreamEvent =
-  | { type: 'init'; provider: Provider; threadId?: string; raw?: any }
+export type CoderStreamEvent =
+  | { type: 'init'; provider: Provider; threadId?: string; model?: string; raw?: any; ts: number }
   | {
       type: 'message';
+      provider: Provider;
       role: 'assistant' | 'user' | 'system';
       text?: string;
       delta?: boolean;
       raw?: any;
+      ts: number;
     }
   | {
-      type: 'tool_use' | 'tool_result';
-      name?: string;
-      payload?: any;
+      type: 'tool_use';
+      provider: Provider;
+      name: string;
+      callId?: string;
+      args?: any;
       raw?: any;
+      ts: number;
     }
-  | { type: 'progress'; message?: string; raw?: any }
-  | { type: 'error'; error: Error | string; raw?: any }
-  | { type: 'done'; raw?: any };
+  | {
+      type: 'tool_result';
+      provider: Provider;
+      name: string;
+      callId?: string;
+      result?: any;
+      exitCode?: number | null;
+      raw?: any;
+      ts: number;
+    }
+  | {
+      type: 'progress';
+      provider: Provider;
+      label?: string;
+      detail?: string;
+      raw?: any;
+      ts: number;
+    }
+  | {
+      type: 'permission';
+      provider: Provider;
+      request?: any;
+      decision?: 'granted' | 'denied' | 'auto';
+      raw?: any;
+      ts: number;
+    }
+  | {
+      type: 'usage';
+      provider: Provider;
+      stats?: { inputTokens?: number; outputTokens?: number; [k: string]: any };
+      raw?: any;
+      ts: number;
+    }
+  | {
+      type: 'error';
+      provider: Provider;
+      code?: string;
+      message: string;
+      raw?: any;
+      ts: number;
+    }
+  | {
+      type: 'done';
+      provider: Provider;
+      raw?: any;
+      ts: number;
+    };
+
+export type EventIterator = AsyncIterable<CoderStreamEvent>;
+
+export const now = () => Date.now();
 
 /**
  * Result returned after a run completes.
@@ -107,11 +160,7 @@ export interface HeadlessCoder {
   startThread(opts?: StartOpts): Promise<ThreadHandle>;
   resumeThread(threadId: string, opts?: StartOpts): Promise<ThreadHandle>;
   run(thread: ThreadHandle, input: PromptInput, opts?: RunOpts): Promise<RunResult>;
-  runStreamed(
-    thread: ThreadHandle,
-    input: PromptInput,
-    opts?: RunOpts,
-  ): AsyncIterable<StreamEvent>;
+  runStreamed(thread: ThreadHandle, input: PromptInput, opts?: RunOpts): EventIterator;
   getThreadId(thread: ThreadHandle): string | undefined;
   close?(thread: ThreadHandle): Promise<void>;
 }

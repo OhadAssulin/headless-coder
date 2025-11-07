@@ -4,6 +4,7 @@
 
 import { query, type SDKMessage, type Options } from '@anthropic-ai/claude-agent-sdk';
 import { randomUUID } from 'node:crypto';
+import { now } from '@headless-coders/core';
 import type {
   HeadlessCoder,
   ThreadHandle,
@@ -11,7 +12,9 @@ import type {
   StartOpts,
   RunOpts,
   RunResult,
-  StreamEvent,
+  CoderStreamEvent,
+  EventIterator,
+  Provider,
 } from '@headless-coders/core';
 
 const STRUCTURED_OUTPUT_SUFFIX =
@@ -165,19 +168,19 @@ export class ClaudeAdapter implements HeadlessCoder {
           continue;
         }
         if (type.includes('assistant')) {
-          lastAssistant = this.extractAssistantText(message);
+          lastAssistant = extractClaudeAssistantText(message);
         }
       }
     } catch (error) {
-      if (finalResult && this.resultIndicatesError(finalResult)) {
-        throw new Error(this.buildResultErrorMessage(finalResult), {
+      if (finalResult && claudeResultIndicatesError(finalResult)) {
+        throw new Error(buildClaudeResultErrorMessage(finalResult), {
           cause: error instanceof Error ? error : undefined,
         });
       }
       throw error;
     }
-    if (finalResult && this.resultIndicatesError(finalResult)) {
-      throw new Error(this.buildResultErrorMessage(finalResult));
+    if (finalResult && claudeResultIndicatesError(finalResult)) {
+      throw new Error(buildClaudeResultErrorMessage(finalResult));
     }
     const structured = runOpts?.outputSchema ? extractJsonPayload(lastAssistant) : undefined;
     return { threadId: thread.id, text: lastAssistant, raw: finalResult, json: structured };
@@ -201,124 +204,27 @@ export class ClaudeAdapter implements HeadlessCoder {
     thread: ThreadHandle,
     input: PromptInput,
     runOpts?: RunOpts,
-  ): AsyncIterable<StreamEvent> {
-    yield { type: 'init', provider: 'claude', threadId: thread.id };
+  ): EventIterator {
     const structuredPrompt = applyOutputSchemaPrompt(toPrompt(input), runOpts?.outputSchema);
     const options = this.buildOptions(thread, runOpts);
     const generator = query({ prompt: structuredPrompt, options });
+    let sawDone = false;
     for await (const message of generator as AsyncGenerator<SDKMessage, void, void>) {
-      const type = (message as any)?.type?.toLowerCase?.();
-      if (!type) {
-        yield { type: 'progress', raw: message };
-        continue;
-      }
-      if (type.includes('result')) {
-        if (this.resultIndicatesError(message)) {
-          yield {
-            type: 'error',
-            error: this.buildResultErrorMessage(message),
-            raw: message,
-          };
+      const events = normalizeClaudeStreamMessage(message, thread.id);
+      for (const event of events) {
+        if (event.type === 'error') {
+          yield event;
           return;
         }
-        yield { type: 'progress', raw: message };
-        continue;
-      }
-      if (type.includes('partial')) {
-        yield {
-          type: 'message',
-          role: 'assistant',
-          delta: true,
-          text: (message as any).text ?? (message as any).content,
-          raw: message,
-        };
-      } else if (type.includes('assistant')) {
-        yield {
-          type: 'message',
-          role: 'assistant',
-          text: this.extractAssistantText(message),
-          raw: message,
-        };
-      } else if (type.includes('tool_use') || type.includes('tool-result')) {
-        const eventType = type.includes('tool_use') ? 'tool_use' : 'tool_result';
-        yield {
-          type: eventType as 'tool_use' | 'tool_result',
-          name: (message as any).tool_name,
-          payload: message,
-          raw: message,
-        };
-      } else {
-        yield { type: 'progress', raw: message };
+        if (event.type === 'done') {
+          sawDone = true;
+        }
+        yield event;
       }
     }
-    yield { type: 'done' };
-  }
-
-  /**
-   * Extracts assistant-visible text from Claude SDK message payloads.
-   *
-   * Args:
-   *   message: SDK message containing possible assistant text.
-   *
-   * Returns:
-   *   Plain text content when available, otherwise an empty string.
-   */
-  private extractAssistantText(message: any): string {
-    if (!message) return '';
-
-    const tryExtract = (candidate: any): string => {
-      if (typeof candidate === 'string') return candidate;
-      if (Array.isArray(candidate)) {
-        return candidate
-          .map(item => (typeof item?.text === 'string' ? item.text : ''))
-          .filter(Boolean)
-          .join('\n')
-          .trim();
-      }
-      if (candidate && typeof candidate === 'object' && typeof candidate.text === 'string') {
-        return candidate.text;
-      }
-      return '';
-    };
-
-    const direct = tryExtract(message.text ?? message.content);
-    if (direct) return direct;
-
-    const nested = tryExtract(message.message?.text ?? message.message?.content);
-    if (nested) return nested;
-
-    const alternative = tryExtract(message.delta ?? message.partial);
-    return alternative;
-  }
-
-  /**
-   * Determines whether a Claude result message represents an error.
-   *
-   * Args:
-   *   result: Result payload emitted by the Claude Agent SDK.
-   *
-   * Returns:
-   *   Boolean flag indicating if the result denotes a failure.
-   */
-  private resultIndicatesError(result: any): boolean {
-    return Boolean(result?.is_error || String(result?.subtype ?? '').startsWith('error'));
-  }
-
-  /**
-   * Builds a user-friendly error message for a failed Claude result.
-   *
-   * Args:
-   *   result: Result payload emitted by the Claude Agent SDK.
-   *
-   * Returns:
-   *   String error message containing the reported failure reason.
-   */
-  private buildResultErrorMessage(result: any): string {
-    const summary =
-      result?.result ??
-      (Array.isArray(result?.errors) ? result.errors.join(', ') : undefined) ??
-      'Claude run failed';
-    return `Claude run failed: ${summary}`;
+    if (!sawDone) {
+      yield { type: 'done', provider: 'claude', raw: { reason: 'completed' }, ts: now() };
+    }
   }
 
   /**
@@ -333,4 +239,145 @@ export class ClaudeAdapter implements HeadlessCoder {
   getThreadId(thread: ThreadHandle): string | undefined {
     return thread.id;
   }
+}
+
+function normalizeClaudeStreamMessage(message: any, threadId?: string): CoderStreamEvent[] {
+  const ts = now();
+  const provider: Provider = 'claude';
+  const typeRaw = (message?.type ?? '').toString().toLowerCase();
+  const events: CoderStreamEvent[] = [];
+
+  if (typeRaw.includes('system') || typeRaw.includes('session')) {
+    events.push({
+      type: 'init',
+      provider,
+      threadId: message.session_id ?? threadId,
+      raw: message,
+      ts,
+    });
+    return events;
+  }
+
+  if (typeRaw.includes('partial')) {
+    events.push({
+      type: 'message',
+      provider,
+      role: 'assistant',
+      text: (message as any).text ?? (message as any).content,
+      delta: true,
+      raw: message,
+      ts,
+    });
+    return events;
+  }
+
+  if (typeRaw.includes('assistant')) {
+    events.push({
+      type: 'message',
+      provider,
+      role: 'assistant',
+      text: extractClaudeAssistantText(message),
+      raw: message,
+      ts,
+    });
+    return events;
+  }
+
+  if (typeRaw.includes('tool_use')) {
+    events.push({
+      type: 'tool_use',
+      provider,
+      name: (message as any).tool_name ?? (message as any).tool,
+      callId: (message as any).id,
+      args: (message as any).input,
+      raw: message,
+      ts,
+    });
+    return events;
+  }
+
+  if (typeRaw.includes('tool-result')) {
+    events.push({
+      type: 'tool_result',
+      provider,
+      name: (message as any).tool_name ?? (message as any).tool,
+      callId: (message as any).tool_use_id ?? (message as any).id,
+      result: (message as any).output,
+      raw: message,
+      ts,
+    });
+    return events;
+  }
+
+  if (typeRaw.includes('permission')) {
+    events.push({ type: 'permission', provider, raw: message, ts });
+    return events;
+  }
+
+  if (typeRaw.includes('result')) {
+    if (claudeResultIndicatesError(message)) {
+      events.push({
+        type: 'error',
+        provider,
+        message: buildClaudeResultErrorMessage(message),
+        raw: message,
+        ts,
+      });
+    } else {
+      if (message.usage) {
+        events.push({ type: 'usage', provider, stats: message.usage, raw: message, ts });
+      }
+      events.push({ type: 'done', provider, raw: message, ts });
+    }
+    return events;
+  }
+
+  events.push({
+    type: 'progress',
+    provider,
+    label: typeRaw || 'claude.event',
+    raw: message,
+    ts,
+  });
+  return events;
+}
+
+function extractClaudeAssistantText(message: any): string {
+  if (!message) return '';
+
+  const tryExtract = (candidate: any): string => {
+    if (typeof candidate === 'string') return candidate;
+    if (Array.isArray(candidate)) {
+      return candidate
+        .map(item => (typeof item?.text === 'string' ? item.text : ''))
+        .filter(Boolean)
+        .join('\n')
+        .trim();
+    }
+    if (candidate && typeof candidate === 'object' && typeof candidate.text === 'string') {
+      return candidate.text;
+    }
+    return '';
+  };
+
+  const direct = tryExtract(message.text ?? message.content);
+  if (direct) return direct;
+
+  const nested = tryExtract(message.message?.text ?? message.message?.content);
+  if (nested) return nested;
+
+  const alternative = tryExtract(message.delta ?? message.partial);
+  return alternative;
+}
+
+function claudeResultIndicatesError(result: any): boolean {
+  return Boolean(result?.is_error || String(result?.subtype ?? '').startsWith('error'));
+}
+
+function buildClaudeResultErrorMessage(result: any): string {
+  const summary =
+    result?.result ??
+    (Array.isArray(result?.errors) ? result.errors.join(', ') : undefined) ??
+    'Claude run failed';
+  return `Claude run failed: ${summary}`;
 }

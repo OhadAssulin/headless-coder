@@ -4,6 +4,7 @@
 
 import { spawn } from 'node:child_process';
 import * as readline from 'node:readline';
+import { now } from '@headless-coders/core';
 import type {
   HeadlessCoder,
   ThreadHandle,
@@ -11,7 +12,9 @@ import type {
   StartOpts,
   RunOpts,
   RunResult,
-  StreamEvent,
+  CoderStreamEvent,
+  EventIterator,
+  Provider,
 } from '@headless-coders/core';
 
 const STRUCTURED_OUTPUT_SUFFIX =
@@ -192,7 +195,7 @@ export class GeminiAdapter implements HeadlessCoder {
     thread: ThreadHandle,
     input: PromptInput,
     opts?: RunOpts,
-  ): AsyncIterable<StreamEvent> {
+  ): EventIterator {
     const startOpts = ((thread.internal as any)?.opts ?? {}) as StartOpts;
     const prompt = applyOutputSchemaPrompt(input, opts?.outputSchema);
     const args = ['--output-format', 'stream-json', '--prompt', prompt];
@@ -217,38 +220,12 @@ export class GeminiAdapter implements HeadlessCoder {
         continue;
       }
 
-      switch (event.type) {
-        case 'init':
-          thread.id = event.session_id ?? thread.id;
-          yield { type: 'init', provider: 'gemini', threadId: thread.id, raw: event };
-          break;
-        case 'message':
-          yield {
-            type: 'message',
-            role: event.role ?? 'assistant',
-            text: event.content,
-            delta: !!event.delta,
-            raw: event,
-          };
-          break;
-        case 'tool_use':
-        case 'tool_result':
-          yield {
-            type: event.type,
-            name: event.tool_name,
-            payload: event,
-            raw: event,
-          };
-          break;
-        case 'error':
-          yield { type: 'error', error: event.message ?? 'gemini error', raw: event };
-          break;
-        case 'result':
-          yield { type: 'done', raw: event };
-          break;
-        default:
-          yield { type: 'progress', raw: event };
-          break;
+      if (event.session_id) {
+        thread.id = event.session_id;
+      }
+
+      for (const normalized of normalizeGeminiEvent(event)) {
+        yield normalized;
       }
     }
   }
@@ -264,5 +241,84 @@ export class GeminiAdapter implements HeadlessCoder {
    */
   getThreadId(thread: ThreadHandle): string | undefined {
     return thread.id;
+  }
+}
+
+function normalizeGeminiEvent(event: any): CoderStreamEvent[] {
+  const ts = now();
+  const provider: Provider = 'gemini';
+  const type = event?.type;
+  const normalized: CoderStreamEvent[] = [];
+
+  switch (type) {
+    case 'init':
+      normalized.push({
+        type: 'init',
+        provider,
+        threadId: event.session_id,
+        model: event.model,
+        raw: event,
+        ts,
+      });
+      return normalized;
+    case 'message':
+      normalized.push({
+        type: 'message',
+        provider,
+        role: event.role ?? 'assistant',
+        text: event.content,
+        delta: !!event.delta,
+        raw: event,
+        ts,
+      });
+      return normalized;
+    case 'tool_use':
+      normalized.push({
+        type: 'tool_use',
+        provider,
+        name: event.tool_name ?? 'tool',
+        callId: event.call_id,
+        args: event.args,
+        raw: event,
+        ts,
+      });
+      return normalized;
+    case 'tool_result':
+      normalized.push({
+        type: 'tool_result',
+        provider,
+        name: event.tool_name ?? 'tool',
+        callId: event.call_id,
+        result: event.result,
+        exitCode: event.exit_code ?? null,
+        raw: event,
+        ts,
+      });
+      return normalized;
+    case 'error':
+      normalized.push({
+        type: 'error',
+        provider,
+        message: event.message ?? 'gemini error',
+        raw: event,
+        ts,
+      });
+      return normalized;
+    case 'result': {
+      if (event.stats) {
+        normalized.push({ type: 'usage', provider, stats: event.stats, raw: event, ts });
+      }
+      normalized.push({ type: 'done', provider, raw: event, ts });
+      return normalized;
+    }
+    default:
+      normalized.push({
+        type: 'progress',
+        provider,
+        label: typeof type === 'string' ? type : 'gemini.event',
+        raw: event,
+        ts,
+      });
+      return normalized;
   }
 }

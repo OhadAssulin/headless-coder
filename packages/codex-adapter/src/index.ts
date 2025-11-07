@@ -3,6 +3,7 @@
  */
 
 import { Codex, type Thread as CodexThread } from '@openai/codex-sdk';
+import { now } from '@headless-coders/core';
 import type {
   HeadlessCoder,
   ThreadHandle,
@@ -10,7 +11,9 @@ import type {
   StartOpts,
   RunOpts,
   RunResult,
-  StreamEvent,
+  CoderStreamEvent,
+  EventIterator,
+  Provider,
 } from '@headless-coders/core';
 
 function extractJsonPayload(text: string | undefined): unknown | undefined {
@@ -154,22 +157,19 @@ export class CodexAdapter implements HeadlessCoder {
     thread: ThreadHandle,
     input: PromptInput,
     opts?: RunOpts,
-  ): AsyncIterable<StreamEvent> {
+  ): EventIterator {
     void opts;
     const runStream = await (thread.internal as CodexThread).runStreamed(normalizeInput(input));
     const asyncEvents = (runStream as any)?.events ?? runStream;
     if (!asyncEvents || typeof (asyncEvents as any)[Symbol.asyncIterator] !== 'function') {
       throw new Error('Codex streaming API did not return an async iterator.');
     }
-    yield {
-      type: 'init',
-      provider: 'codex',
-      threadId: (thread.internal as CodexThread).id ?? undefined,
-    };
+
     for await (const event of asyncEvents as AsyncIterable<any>) {
-      yield { type: 'progress', raw: event };
+      for (const normalized of normalizeCodexEvent(event)) {
+        yield normalized;
+      }
     }
-    yield { type: 'done' };
   }
 
   /**
@@ -185,4 +185,95 @@ export class CodexAdapter implements HeadlessCoder {
     const threadId = (thread.internal as CodexThread).id;
     return threadId === null ? undefined : threadId;
   }
+}
+
+function normalizeCodexEvent(event: any): CoderStreamEvent[] {
+  const ts = now();
+  const provider: Provider = 'codex';
+  const type = event?.type;
+  const normalized: CoderStreamEvent[] = [];
+
+  if (type === 'thread.started') {
+    normalized.push({ type: 'init', provider, threadId: event.thread_id, raw: event, ts });
+    return normalized;
+  }
+
+  if (type === 'turn.started') {
+    normalized.push({ type: 'progress', provider, label: 'turn.started', raw: event, ts });
+    return normalized;
+  }
+
+  if (type === 'item.started' && event.item?.type === 'command_execution') {
+    normalized.push({
+      type: 'tool_use',
+      provider,
+      name: 'command',
+      callId: event.item.id,
+      args: { command: event.item.command },
+      raw: event,
+      ts,
+    });
+    return normalized;
+  }
+
+  if (type === 'item.completed' && event.item?.type === 'command_execution') {
+    normalized.push({
+      type: 'tool_result',
+      provider,
+      name: 'command',
+      callId: event.item.id,
+      exitCode: event.item.exit_code ?? null,
+      result: event.item.aggregated_output ?? event.item.text,
+      raw: event,
+      ts,
+    });
+    return normalized;
+  }
+
+  if (type === 'item.delta' && event.item?.type === 'agent_message') {
+    normalized.push({
+      type: 'message',
+      provider,
+      role: 'assistant',
+      text: event.delta ?? event.item?.text,
+      delta: true,
+      raw: event,
+      ts,
+    });
+    return normalized;
+  }
+
+  if (type === 'item.completed' && event.item?.type === 'agent_message') {
+    normalized.push({
+      type: 'message',
+      provider,
+      role: 'assistant',
+      text: event.item.text,
+      raw: event,
+      ts,
+    });
+    return normalized;
+  }
+
+  if (typeof type === 'string' && type.startsWith('permission.')) {
+    normalized.push({ type: 'permission', provider, raw: event, ts });
+    return normalized;
+  }
+
+  if (type === 'turn.completed') {
+    if (event.usage) {
+      normalized.push({ type: 'usage', provider, stats: event.usage, raw: event, ts });
+    }
+    normalized.push({ type: 'done', provider, raw: event, ts });
+    return normalized;
+  }
+
+  normalized.push({
+    type: 'progress',
+    provider,
+    label: typeof type === 'string' ? type : 'codex.event',
+    raw: event,
+    ts,
+  });
+  return normalized;
 }
