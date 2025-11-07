@@ -13,6 +13,20 @@ import type {
   StreamEvent,
 } from '@headless-coders/core';
 
+function extractJsonPayload(text: string | undefined): unknown | undefined {
+  if (!text) return undefined;
+  const fenced = text.match(/```json\s*([\s\S]+?)```/i);
+  const candidate = (fenced ? fenced[1] : text).trim();
+  const start = candidate.indexOf('{');
+  const end = candidate.lastIndexOf('}');
+  if (start === -1 || end === -1 || end < start) return undefined;
+  try {
+    return JSON.parse(candidate.slice(start, end + 1));
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Normalises prompt input into a string accepted by the Codex SDK.
  *
@@ -110,7 +124,10 @@ export class CodexAdapter implements HeadlessCoder {
     });
     const threadId = (thread.internal as CodexThread).id ?? undefined;
     const finalResponse = (result as any)?.finalResponse ?? (result as any)?.text ?? result;
-    const structured = (result as any)?.parsedResponse ?? (result as any)?.json;
+    const structured =
+      (result as any)?.parsedResponse ??
+      (result as any)?.json ??
+      (typeof finalResponse === 'string' ? extractJsonPayload(finalResponse) : undefined);
     return {
       threadId,
       text: typeof finalResponse === 'string' ? finalResponse : undefined,
