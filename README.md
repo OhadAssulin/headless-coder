@@ -78,6 +78,7 @@ console.log(turn.json); // Parsed object based on the schema above
 
 // Gemini CLI resume support is pending (https://github.com/google-gemini/gemini-cli/pull/10719).
 // Once merged upstream, a resume example will be added here.
+// Until then, each Gemini run effectively starts a fresh context even if you reuse a thread handle.
 
 ## Resume Example (Codex)
 
