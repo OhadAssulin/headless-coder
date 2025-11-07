@@ -99,6 +99,93 @@ const resumedSession = await codex.resumeThread(session.id!);
 const followUp = await codex.run(resumedSession, 'Continue with implementation details.');
 console.log(followUp.text);
 ```
+
+## Multi-Provider Workflow Example
+
+```ts
+import { createCoder } from '@headless-coders/core/factory';
+import { CODER_TYPES } from '@headless-coders/core';
+
+const codex = createCoder(CODER_TYPES.CODEX, {
+  workingDirectory: process.cwd(),
+  sandboxMode: 'workspace-write',
+  skipGitRepoCheck: true,
+});
+const claude = createCoder(CODER_TYPES.CLAUDE_CODE, {
+  workingDirectory: process.cwd(),
+  permissionMode: 'bypassPermissions',
+  allowedTools: ['Write', 'Read', 'Edit', 'NotebookEdit'],
+});
+const gemini = createCoder(CODER_TYPES.GEMINI, {
+  workingDirectory: process.cwd(),
+  includeDirectories: [process.cwd()],
+});
+
+const buildThread = await codex.startThread();
+const buildResult = await codex.run(
+  buildThread,
+  'Implement a CLI tool that prints release notes from CHANGELOG.md.',
+);
+console.log(buildResult.text);
+
+// Ask Claude to run tests with structured output
+const testThread = await claude.startThread();
+const testResult = await claude.run(
+  testThread,
+  'Run npm test and return structured results.',
+  {
+    outputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string' },
+        failingTests: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['status'],
+      additionalProperties: false,
+    },
+  },
+);
+
+if (testResult.json && (testResult.json as any).status !== 'passed') {
+  await codex.run(buildThread, `Tests failed: ${(testResult.json as any).failingTests?.join(', ')}. Please fix.`);
+}
+
+// In parallel ask Gemini to review code with structured output
+const reviewThread = await gemini.startThread();
+const reviewResult = await gemini.run(
+  reviewThread,
+  'Code review the latest changes. Output issues as JSON.',
+  {
+    outputSchema: {
+      type: 'object',
+      properties: {
+        issues: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              file: { type: 'string' },
+              concern: { type: 'string' },
+            },
+            required: ['file', 'concern'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['issues'],
+      additionalProperties: false,
+    },
+  },
+);
+
+const reviewIssues = (reviewResult.json as any)?.issues ?? [];
+if (Array.isArray(reviewIssues) && reviewIssues.length > 0) {
+  await codex.run(
+    buildThread,
+    `Gemini review found issues: ${JSON.stringify(reviewIssues, null, 2)}. Address them and respond with fixes.`,
+  );
+}
+```
 ```
 
 ## Development
