@@ -72,6 +72,19 @@ function normalizeInput(input: PromptInput): string {
     : input.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
 }
 
+function createAbortError(reason?: unknown): Error {
+  const message =
+    typeof reason === 'string'
+      ? reason
+      : reason instanceof Error && reason.message
+        ? reason.message
+        : 'Operation interrupted';
+  const error = new Error(message);
+  error.name = 'AbortError';
+  (error as any).code = 'interrupted';
+  return error;
+}
+
 export function createAdapter(defaults?: StartOpts): HeadlessCoder {
   return {
     async startThread(opts?: StartOpts): Promise<ThreadHandle> {
@@ -88,7 +101,15 @@ export function createAdapter(defaults?: StartOpts): HeadlessCoder {
 
     async run(thread: ThreadHandle, input: PromptInput, runOpts?: RunOpts): Promise<RunResult> {
       const prompt = normalizeInput(input);
+      if (runOpts?.signal?.aborted) {
+        throw createAbortError(runOpts.signal.reason);
+      }
+      const abortHandler = () => {
+        throw createAbortError(runOpts?.signal?.reason);
+      };
+      runOpts?.signal?.addEventListener('abort', abortHandler, { once: true });
       const text = `(demo) my-cool-coder response to: ${prompt}`;
+      runOpts?.signal?.removeEventListener('abort', abortHandler);
       return { threadId: thread.id, text, raw: { demo: true } };
     },
 
@@ -112,6 +133,10 @@ export function createAdapter(defaults?: StartOpts): HeadlessCoder {
 
     getThreadId(thread: ThreadHandle) {
       return thread.id;
+    },
+    interrupt: async reason => {
+      /* abort in-flight requests here */
+      void reason;
     },
   };
 }
@@ -150,7 +175,15 @@ Honor the caller’s `StartOpts` (e.g., `sandboxMode`, allow/deny lists) and onl
 
 ---
 
-### 6️⃣ Register & Use Your Adapter
+### 6️⃣ Support Cancellation & Interrupts
+
+- Create an `AbortController` for every run/runStreamed invocation.
+- Link `RunOpts.signal` to your controller and stop work immediately when it fires.
+- Expose `thread.interrupt(reason?)` by storing the controller (or equivalent) on your thread state and aborting the in-flight run when called.
+- Emit a `cancelled` stream event (or an `error` with `code: 'interrupted'`) before ending iteration.
+- Reject `run()` with an `AbortError` (set `error.name = 'AbortError'` and `code = 'interrupted'`).
+
+### 7️⃣ Register & Use Your Adapter
 
 ```ts
 import { registerAdapter, createCoder } from '@headless-coder-sdk/core';
@@ -167,14 +200,14 @@ for await (const ev of thread.runStreamed('Hello')) {
 
 ---
 
-### 7️⃣ Test Locally
+### 8️⃣ Test Locally
 
 - Unit tests: verify provider events → `CoderStreamEvent` mapping.
 - Integration tests: run a short prompt and expect the sequence `init → message → done`.
 
 ---
 
-### 8️⃣ Publish
+### 9️⃣ Publish
 
 ```bash
 npm run build

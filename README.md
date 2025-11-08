@@ -222,6 +222,43 @@ if (Array.isArray(reviewIssues) && reviewIssues.length > 0) {
 - Execute tests across packages: `npm run test` or `pnpm run test`
 - Execute the end-to-end examples suite: `npm run test -- --workspace @headless-coder-sdk/examples-tests`
 
+## Handling Interrupts
+
+All adapters honor cooperative cancellation via `RunOpts.signal` and thread-level interrupts:
+
+```ts
+import { AbortController } from 'node-abort-controller';
+
+const coder = createCoder(CODEX_CODER, { workingDirectory: process.cwd() });
+const controller = new AbortController();
+const thread = await coder.startThread();
+const runPromise = thread.run('Generate a summary of CONTRIBUTING.md', { signal: controller.signal });
+
+setTimeout(() => {
+  controller.abort('User cancelled the run');
+  // or equivalently: void thread.interrupt('User cancelled the run');
+}, 2000);
+
+try {
+  const result = await runPromise;
+  console.log(result.text);
+} catch (error) {
+  if (error instanceof Error && (error as any).code === 'interrupted') {
+    console.warn('Run interrupted:', error.message);
+  } else {
+    throw error;
+  }
+}
+
+for await (const event of thread.runStreamed('Plan the next release', { signal: controller.signal })) {
+  if (event.type === 'message' && event.role === 'assistant') {
+    process.stdout.write(event.text ?? '');
+  }
+}
+```
+
+When a run is aborted, streaming callers receive a `cancelled` event and non-streaming callers get an `AbortError` with `code: 'interrupted'`.
+
 ## Build Your Own Adapter
 
 Want to add another provider? Follow the [Create Your Own Adapter guide](docs/create-your-own-adapter.md) for a step-by-step walkthrough covering exports, registry usage, and testing tips.
