@@ -212,7 +212,6 @@ if (Array.isArray(reviewIssues) && reviewIssues.length > 0) {
   );
 }
 ```
-```
 
 ## Development
 
