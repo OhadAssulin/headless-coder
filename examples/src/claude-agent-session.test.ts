@@ -192,7 +192,7 @@ async function runClaudeScenario(t: TestContext): Promise<void> {
   let result: RunResult;
   try {
     result = await withinTimeout<RunResult>(
-      coder.run(thread, buildPrompt(CLAUDE_WORKSPACE), { streamPartialMessages: true }),
+      thread.run(buildPrompt(CLAUDE_WORKSPACE), { streamPartialMessages: true }),
       CLAUDE_TIMEOUT_MS,
       `Claude integration test timed out after ${CLAUDE_TIMEOUT_MS}ms.`,
     );

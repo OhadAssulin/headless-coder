@@ -63,7 +63,7 @@ test('gemini streams a sin/cos calculator', async t => {
   const stream = createWriteStream(streamPath, { flags: 'w' });
 
   try {
-    for await (const event of coder.runStreamed(thread, buildPrompt(WORKSPACE))) {
+  for await (const event of thread.runStreamed(buildPrompt(WORKSPACE))) {
       stream.write(`${JSON.stringify(event)}\n`);
     }
   } catch (error) {

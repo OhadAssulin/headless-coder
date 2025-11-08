@@ -60,8 +60,7 @@ async function runClaudeStructured(t: TestContext): Promise<void> {
   });
 
   const thread = await coder.startThread();
-  const result = await coder.run(
-    thread,
+  const result = await thread.run(
     'Provide JSON containing a summary and two risks of using autonomous coding agents.',
     { outputSchema: SCHEMA },
   );

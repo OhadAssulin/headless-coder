@@ -12,14 +12,14 @@ test('codex resumes a conversation', async () => {
   });
 
   const initialThread = await coder.startThread({ model: 'gpt-5-codex' });
-  const firstRun = await coder.run(initialThread, 'List two tasks we should automate.');
+  const firstRun = await initialThread.run('List two tasks we should automate.');
   assert.ok(firstRun.text && firstRun.text.length > 0, 'First run should produce text.');
 
   const initialId = coder.getThreadId(initialThread) ?? firstRun.threadId;
   assert.ok(initialId, 'Codex should supply a thread id after the first run.');
 
   const resumedThread = await coder.resumeThread(initialId!);
-  const followUp = await coder.run(resumedThread, 'Continue with mitigation steps.');
+  const followUp = await resumedThread.run('Continue with mitigation steps.');
 
   assert.equal(followUp.threadId, initialId);
   assert.ok(followUp.text && followUp.text.length > 0, 'Follow-up run should produce text.');

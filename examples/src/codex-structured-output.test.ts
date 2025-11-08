@@ -28,8 +28,7 @@ test('codex returns structured summary output', async () => {
   });
 
   const thread = await coder.startThread();
-  const result = await coder.run(
-    thread,
+  const result = await thread.run(
     'Summarise the purpose of this repository and list two components.',
     { outputSchema: SCHEMA },
   );

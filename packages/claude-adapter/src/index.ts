@@ -88,7 +88,7 @@ export class ClaudeAdapter implements HeadlessCoderSdk {
   async startThread(opts?: StartOpts): Promise<ThreadHandle> {
     const options = { ...this.defaultOpts, ...opts };
     const id = options.resume ?? randomUUID();
-    return { provider: 'claude', id, internal: { sessionId: id, opts: options, resume: false } };
+    return this.createThreadHandle(id, options, false);
   }
 
   /**
@@ -103,11 +103,7 @@ export class ClaudeAdapter implements HeadlessCoderSdk {
    */
   async resumeThread(threadId: string, opts?: StartOpts): Promise<ThreadHandle> {
     const options = { ...this.defaultOpts, ...opts };
-    return {
-      provider: 'claude',
-      id: threadId,
-      internal: { sessionId: threadId, opts: options, resume: true },
-    };
+    return this.createThreadHandle(threadId, options, true);
   }
 
   /**
@@ -153,7 +149,7 @@ export class ClaudeAdapter implements HeadlessCoderSdk {
    * Raises:
    *   Error: Propagated when the Claude Agent SDK surfaces a failure event.
    */
-  async run(thread: ThreadHandle, input: PromptInput, runOpts?: RunOpts): Promise<RunResult> {
+  private async runInternal(thread: ThreadHandle, input: PromptInput, runOpts?: RunOpts): Promise<RunResult> {
     const structuredPrompt = applyOutputSchemaPrompt(toPrompt(input), runOpts?.outputSchema);
     const options = this.buildOptions(thread, runOpts);
     const generator = query({ prompt: structuredPrompt, options });
@@ -200,7 +196,7 @@ export class ClaudeAdapter implements HeadlessCoderSdk {
    * Raises:
    *   Error: Propagated when the Claude Agent SDK terminates with an error.
    */
-  async *runStreamed(
+  private async *runStreamedInternal(
     thread: ThreadHandle,
     input: PromptInput,
     runOpts?: RunOpts,
@@ -238,6 +234,16 @@ export class ClaudeAdapter implements HeadlessCoderSdk {
    */
   getThreadId(thread: ThreadHandle): string | undefined {
     return thread.id;
+  }
+  private createThreadHandle(sessionId: string, options: StartOpts, resume: boolean): ThreadHandle {
+    const handle: ThreadHandle = {
+      provider: 'claude',
+      id: sessionId,
+      internal: { sessionId, opts: options, resume },
+      run: (input, runOpts) => this.runInternal(handle, input, runOpts),
+      runStreamed: (input, runOpts) => this.runStreamedInternal(handle, input, runOpts),
+    };
+    return handle;
   }
 }
 

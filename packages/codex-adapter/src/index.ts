@@ -83,7 +83,7 @@ export class CodexAdapter implements HeadlessCoderSdk {
       skipGitRepoCheck: options.skipGitRepoCheck,
       workingDirectory: options.workingDirectory,
     });
-    return { provider: 'codex', internal: thread, id: (thread as any).id ?? undefined };
+    return this.createThreadHandle(thread);
   }
 
   /**
@@ -104,7 +104,7 @@ export class CodexAdapter implements HeadlessCoderSdk {
       skipGitRepoCheck: options.skipGitRepoCheck,
       workingDirectory: options.workingDirectory,
     });
-    return { provider: 'codex', internal: thread, id: threadId ?? undefined };
+    return this.createThreadHandle(thread);
   }
 
   /**
@@ -121,7 +121,7 @@ export class CodexAdapter implements HeadlessCoderSdk {
    * Raises:
    *   Error: Propagated when the Codex SDK fails to complete the run.
    */
-  async run(thread: ThreadHandle, input: PromptInput, opts?: RunOpts): Promise<RunResult> {
+  private async runInternal(thread: ThreadHandle, input: PromptInput, opts?: RunOpts): Promise<RunResult> {
     const result = await (thread.internal as CodexThread).run(normalizeInput(input), {
       outputSchema: opts?.outputSchema,
     });
@@ -153,7 +153,7 @@ export class CodexAdapter implements HeadlessCoderSdk {
    * Raises:
    *   Error: Propagated when the Codex SDK streaming call fails.
    */
-  async *runStreamed(
+  private async *runStreamedInternal(
     thread: ThreadHandle,
     input: PromptInput,
     opts?: RunOpts,
@@ -184,6 +184,17 @@ export class CodexAdapter implements HeadlessCoderSdk {
   getThreadId(thread: ThreadHandle): string | undefined {
     const threadId = (thread.internal as CodexThread).id;
     return threadId === null ? undefined : threadId;
+  }
+
+  private createThreadHandle(thread: CodexThread): ThreadHandle {
+    const handle: ThreadHandle = {
+      provider: 'codex',
+      internal: thread,
+      id: (thread as CodexThread).id ?? undefined,
+      run: (input, opts) => this.runInternal(handle, input, opts),
+      runStreamed: (input, opts) => this.runStreamedInternal(handle, input, opts),
+    };
+    return handle;
   }
 }
 

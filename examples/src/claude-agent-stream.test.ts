@@ -116,7 +116,7 @@ async function runClaudeScenario(t: TestContext): Promise<void> {
   const stream = createWriteStream(streamPath, { flags: 'w' });
 
   try {
-    for await (const event of coder.runStreamed(thread, buildPrompt(WORKSPACE))) {
+    for await (const event of thread.runStreamed(buildPrompt(WORKSPACE))) {
       stream.write(`${JSON.stringify(event)}\n`);
     }
   } finally {

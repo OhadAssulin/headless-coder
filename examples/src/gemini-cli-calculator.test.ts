@@ -100,7 +100,7 @@ async function runGeminiScenario(t: TestContext): Promise<void> {
   let result: RunResult;
   try {
     result = await withinTimeout(
-      coder.run(thread, buildPrompt(GEMINI_WORKSPACE)),
+      thread.run(buildPrompt(GEMINI_WORKSPACE)),
       GEMINI_TIMEOUT_MS,
       `Gemini integration test timed out after ${GEMINI_TIMEOUT_MS}ms.`,
     );

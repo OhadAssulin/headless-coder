@@ -24,7 +24,7 @@ import { CODER_TYPES } from '@headless-coder-sdk/core';
 
 const coder = createCoder(CODER_TYPES.CODEX, { workingDirectory: process.cwd() });
 const thread = await coder.startThread();
-const result = await coder.run(thread, 'Generate a test plan for the API gateway.');
+const result = await thread.run('Generate a test plan for the API gateway.');
 console.log(result.text);
 ```
 
@@ -39,7 +39,7 @@ const claude = createCoder(CODER_TYPES.CLAUDE_CODE, {
   permissionMode: 'bypassPermissions',
 });
 const thread = await claude.startThread();
-for await (const event of claude.runStreamed(thread, 'Plan end-to-end tests')) {
+for await (const event of thread.runStreamed('Plan end-to-end tests')) {
   if (event.type === 'message' && event.role === 'assistant') {
     process.stdout.write(event.delta ? event.text ?? '' : `\n${event.text}\n`);
   }
@@ -47,7 +47,7 @@ for await (const event of claude.runStreamed(thread, 'Plan end-to-end tests')) {
 
 // Later you can resume the same Claude session and continue a conversation.
 const resumed = await claude.resumeThread(thread.id!);
-const followUp = await claude.run(resumed, 'Summarise the agreed test plan.');
+const followUp = await resumed.run('Summarise the agreed test plan.');
 console.log(followUp.text);
 ```
 
@@ -62,8 +62,8 @@ const gemini = createCoder(CODER_TYPES.GEMINI, {
   includeDirectories: [process.cwd()],
 });
 
-const turn = await gemini.run(
-  await gemini.startThread(),
+const geminiThread = await gemini.startThread();
+const turn = await geminiThread.run(
   'Summarise the repo in JSON',
   {
     outputSchema: {
@@ -99,11 +99,11 @@ const codex = createCoder(CODER_TYPES.CODEX, {
 });
 
 const session = await codex.startThread({ model: 'gpt-5-codex' });
-await codex.run(session, 'Draft a CLI plan.');
+await session.run('Draft a CLI plan.');
 
 // pause... later
 const resumedSession = await codex.resumeThread(session.id!);
-const followUp = await codex.run(resumedSession, 'Continue with implementation details.');
+const followUp = await resumedSession.run('Continue with implementation details.');
 console.log(followUp.text);
 ```
 
@@ -129,16 +129,14 @@ const gemini = createCoder(CODER_TYPES.GEMINI, {
 });
 
 const buildThread = await codex.startThread();
-const buildResult = await codex.run(
-  buildThread,
+const buildResult = await buildThread.run(
   'Implement a CLI tool that prints release notes from CHANGELOG.md.',
 );
 console.log(buildResult.text);
 
 // Ask Claude to run tests with structured output
 const testThread = await claude.startThread();
-const testResult = await claude.run(
-  testThread,
+const testResult = await testThread.run(
   'Run npm test and return structured results.',
   {
     outputSchema: {
@@ -154,13 +152,12 @@ const testResult = await claude.run(
 );
 
 if (testResult.json && (testResult.json as any).status !== 'passed') {
-  await codex.run(buildThread, `Tests failed: ${(testResult.json as any).failingTests?.join(', ')}. Please fix.`);
+  await buildThread.run(`Tests failed: ${(testResult.json as any).failingTests?.join(', ')}. Please fix.`);
 }
 
 // In parallel ask Gemini to review code with structured output
 const reviewThread = await gemini.startThread();
-const reviewResult = await gemini.run(
-  reviewThread,
+const reviewResult = await reviewThread.run(
   'Code review the latest changes. Output issues as JSON.',
   {
     outputSchema: {
@@ -187,8 +184,7 @@ const reviewResult = await gemini.run(
 
 const reviewIssues = (reviewResult.json as any)?.issues ?? [];
 if (Array.isArray(reviewIssues) && reviewIssues.length > 0) {
-  await codex.run(
-    buildThread,
+  await buildThread.run(
     `Gemini review found issues: ${JSON.stringify(reviewIssues, null, 2)}. Address them and respond with fixes.`,
   );
 }

@@ -44,12 +44,11 @@ test('claude resumes a conversation', async t => {
   });
 
   const thread = await coder.startThread();
-  const first = await coder.run(thread, 'Give one idea for improving DX.');
+  const first = await thread.run('Give one idea for improving DX.');
   assert.ok(first.text && first.text.length > 0, 'First Claude response should exist.');
 
   const resumed = await coder.resumeThread(thread.id!);
-  const followUp = await coder.run(resumed, 'Continue with implementation guidance.');
+  const followUp = await resumed.run('Continue with implementation guidance.');
   assert.equal(followUp.threadId, thread.id);
   assert.ok(followUp.text && followUp.text.length > 0, 'Claude follow-up should exist.');
 });
-

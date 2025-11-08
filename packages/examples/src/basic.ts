@@ -48,7 +48,7 @@ export async function main(argv: string[]): Promise<void> {
     workingDirectory: process.cwd(),
   });
   const thread = await coder.startThread();
-  const result = await coder.run(thread, prompt);
+  const result = await thread.run(prompt);
   const output = result.text ?? JSON.stringify(result.json ?? result.raw, null, 2);
   // eslint-disable-next-line no-console -- Example script prints to stdout.
   console.log(output);

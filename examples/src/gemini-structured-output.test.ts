@@ -31,8 +31,7 @@ test('gemini returns structured output', async t => {
 
   const thread = await coder.startThread();
   try {
-    const result = await coder.run(
-      thread,
+    const result = await thread.run(
       'Provide JSON describing this project (summary + components array).',
       { outputSchema: SCHEMA },
     );
@@ -48,4 +47,3 @@ test('gemini returns structured output', async t => {
     throw error;
   }
 });
-

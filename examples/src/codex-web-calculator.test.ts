@@ -110,7 +110,7 @@ async function runCalculatorScenario(t: TestContext): Promise<void> {
   const prompt = buildCalculatorPrompt(TARGET_DIR);
 
   try {
-    await coder.run(thread, prompt);
+    await thread.run(prompt);
   } catch (error) {
     throw new Error(
       'Codex failed to generate the calculator. Ensure the codex executable is available and licensed.',

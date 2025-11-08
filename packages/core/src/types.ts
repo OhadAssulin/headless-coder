@@ -59,12 +59,15 @@ export interface RunOpts {
 }
 
 /**
- * Handle returned by provider-specific threads.
+ * Handle returned by provider-specific threads, exposing execution helpers.
  */
 export interface ThreadHandle {
   provider: Provider;
   internal: unknown;
   id?: string;
+  run(input: PromptInput, opts?: RunOpts): Promise<RunResult>;
+  runStreamed(input: PromptInput, opts?: RunOpts): EventIterator;
+  close?(): Promise<void>;
 }
 
 /**
@@ -170,8 +173,6 @@ export interface RunResult {
 export interface HeadlessCoderSdk {
   startThread(opts?: StartOpts): Promise<ThreadHandle>;
   resumeThread(threadId: string, opts?: StartOpts): Promise<ThreadHandle>;
-  run(thread: ThreadHandle, input: PromptInput, opts?: RunOpts): Promise<RunResult>;
-  runStreamed(thread: ThreadHandle, input: PromptInput, opts?: RunOpts): EventIterator;
   getThreadId(thread: ThreadHandle): string | undefined;
   close?(thread: ThreadHandle): Promise<void>;
 }

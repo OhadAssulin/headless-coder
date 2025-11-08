@@ -97,7 +97,7 @@ export class GeminiAdapter implements HeadlessCoderSdk {
    */
   async startThread(opts?: StartOpts): Promise<ThreadHandle> {
     const options = { ...this.defaultOpts, ...opts };
-    return { provider: 'gemini', internal: { opts: options } };
+    return this.createThreadHandle(options);
   }
 
   /**
@@ -112,7 +112,7 @@ export class GeminiAdapter implements HeadlessCoderSdk {
    */
   async resumeThread(threadId: string, opts?: StartOpts): Promise<ThreadHandle> {
     const options = { ...this.defaultOpts, ...opts };
-    return { provider: 'gemini', id: threadId, internal: { opts: options } };
+    return this.createThreadHandle(options, threadId);
   }
 
   /**
@@ -129,7 +129,7 @@ export class GeminiAdapter implements HeadlessCoderSdk {
    * Raises:
    *   Error: When the Gemini CLI exits with a non-zero status.
    */
-  async run(thread: ThreadHandle, input: PromptInput, opts?: RunOpts): Promise<RunResult> {
+  private async runInternal(thread: ThreadHandle, input: PromptInput, opts?: RunOpts): Promise<RunResult> {
     const startOpts = ((thread.internal as any)?.opts ?? {}) as StartOpts;
     const prompt = applyOutputSchemaPrompt(input, opts?.outputSchema);
     const args = ['--output-format', 'json', '--prompt', prompt];
@@ -191,7 +191,7 @@ export class GeminiAdapter implements HeadlessCoderSdk {
    * Raises:
    *   Error: When the Gemini CLI process fails before emitting events.
    */
-  async *runStreamed(
+  private async *runStreamedInternal(
     thread: ThreadHandle,
     input: PromptInput,
     opts?: RunOpts,
@@ -241,6 +241,17 @@ export class GeminiAdapter implements HeadlessCoderSdk {
    */
   getThreadId(thread: ThreadHandle): string | undefined {
     return thread.id;
+  }
+
+  private createThreadHandle(options: StartOpts, threadId?: string): ThreadHandle {
+    const handle: ThreadHandle = {
+      provider: 'gemini',
+      id: threadId,
+      internal: { opts: options },
+      run: (input, opts) => this.runInternal(handle, input, opts),
+      runStreamed: (input, opts) => this.runStreamedInternal(handle, input, opts),
+    };
+    return handle;
   }
 }
 

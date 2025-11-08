@@ -20,5 +20,5 @@
 
 Additional behavior:
 
-- `ClaudeAdapter.runStreamed` ensures a trailing `done` event (with `originalItem: { reason: 'completed' }`) if the SDK stream terminates without emitting one of the completion branches.
+- `Claude` thread handles ensure a trailing `done` event (with `originalItem: { reason: 'completed' }`) if the SDK stream terminates without emitting one of the completion branches.
 - Because every event carries `originalItem`, downstream tooling can still access the raw SDK fields (e.g., `usage.input_tokens`) without re-fetching the stream.
