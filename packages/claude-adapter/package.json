@@ -10,11 +10,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json"
   },
-  "dependencies": {
-    "@headless-coder-sdk/core": "file:../core"
-  },
   "peerDependencies": {
-    "@anthropic-ai/claude-agent-sdk": "*"
+    "@anthropic-ai/claude-agent-sdk": "*",
+    "@headless-coder-sdk/core": "^0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0"
