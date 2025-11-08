@@ -5,10 +5,16 @@
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 import { createCoder } from '@headless-coder-sdk/core/factory';
-import { CODER_TYPES } from '@headless-coder-sdk/core';
 import type { Provider, PromptInput } from '@headless-coder-sdk/core/types';
+import { CODER_NAME as CODEX_CODER_NAME } from '@headless-coder-sdk/codex-adapter';
+import { CODER_NAME as CLAUDE_CODER_NAME } from '@headless-coder-sdk/claude-adapter';
+import { CODER_NAME as GEMINI_CODER_NAME } from '@headless-coder-sdk/gemini-adapter';
 
-const SUPPORTED_PROVIDERS: Provider[] = Object.values(CODER_TYPES);
+const SUPPORTED_PROVIDERS: Provider[] = [
+  CODEX_CODER_NAME,
+  CLAUDE_CODER_NAME,
+  GEMINI_CODER_NAME,
+];
 
 /**
  * Parses CLI arguments into a provider and prompt payload.
@@ -23,7 +29,7 @@ function parseArgs(argv: string[]): [Provider, PromptInput] {
   const [providerMaybe, ...promptParts] = argv;
   const provider = SUPPORTED_PROVIDERS.includes(providerMaybe as Provider)
     ? (providerMaybe as Provider)
-    : CODER_TYPES.CODEX;
+    : CODEX_CODER_NAME;
   const prompt =
     promptParts.join(' ').trim() ||
     'Summarise the headless-coder-sdk abstraction in three bullet points.';

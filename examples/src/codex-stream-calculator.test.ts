@@ -10,7 +10,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { JSDOM } from 'jsdom';
 import { createCoder } from '@headless-coder-sdk/core/factory';
-import { CODER_TYPES } from '@headless-coder-sdk/core';
+import { CODER_NAME as CODEX_CODER_NAME } from '@headless-coder-sdk/codex-adapter';
 import type { PromptInput } from '@headless-coder-sdk/core/types';
 
 const WORKSPACE = process.env.CODEX_STREAM_WORKSPACE ?? '/tmp/headless-coder-sdk/test_codex_stream';
@@ -45,7 +45,7 @@ test('codex streams a sin/cos calculator', async () => {
   await rm(path.join(WORKSPACE, STREAM_FILE), { force: true });
   await mkdir(WORKSPACE, { recursive: true });
 
-  const coder = createCoder(CODER_TYPES.CODEX, {
+  const coder = createCoder(CODEX_CODER_NAME, {
     workingDirectory: WORKSPACE,
     sandboxMode: 'workspace-write',
     skipGitRepoCheck: true,

@@ -17,6 +17,8 @@ import type {
   Provider,
 } from '@headless-coder-sdk/core';
 
+export const CODER_NAME: Provider = 'gemini';
+
 const STRUCTURED_OUTPUT_SUFFIX =
   'Respond with JSON that matches the provided schema. Do not include explanatory text outside the JSON.';
 

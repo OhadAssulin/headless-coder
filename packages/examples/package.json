@@ -12,7 +12,10 @@
     "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "@headless-coder-sdk/core": "file:../core"
+    "@headless-coder-sdk/core": "file:../core",
+    "@headless-coder-sdk/codex-adapter": "file:../codex-adapter",
+    "@headless-coder-sdk/claude-adapter": "file:../claude-adapter",
+    "@headless-coder-sdk/gemini-adapter": "file:../gemini-adapter"
   },
   "devDependencies": {
     "typescript": "^5.4.0"

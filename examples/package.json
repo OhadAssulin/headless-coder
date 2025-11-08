@@ -12,6 +12,9 @@
   },
   "dependencies": {
     "@headless-coder-sdk/core": "file:../packages/core",
+    "@headless-coder-sdk/codex-adapter": "file:../packages/codex-adapter",
+    "@headless-coder-sdk/claude-adapter": "file:../packages/claude-adapter",
+    "@headless-coder-sdk/gemini-adapter": "file:../packages/gemini-adapter",
     "jsdom": "^24.0.0"
   }
 }

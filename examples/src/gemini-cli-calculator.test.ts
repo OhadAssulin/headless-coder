@@ -11,7 +11,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { JSDOM } from 'jsdom';
 import { createCoder } from '@headless-coder-sdk/core/factory';
-import { CODER_TYPES } from '@headless-coder-sdk/core';
+import { CODER_NAME as GEMINI_CODER_NAME } from '@headless-coder-sdk/gemini-adapter';
 import type { PromptInput, RunResult } from '@headless-coder-sdk/core/types';
 
 const GEMINI_WORKSPACE = process.env.GEMINI_TEST_WORKSPACE ?? '/tmp/headless-coder-sdk/test_gemini';
@@ -79,7 +79,7 @@ function isGeminiMissing(error: unknown): boolean {
 async function runGeminiScenario(t: TestContext): Promise<void> {
   await prepareWorkspace(GEMINI_WORKSPACE);
 
-  const coder = createCoder(CODER_TYPES.GEMINI, {
+  const coder = createCoder(GEMINI_CODER_NAME, {
     workingDirectory: GEMINI_WORKSPACE,
     includeDirectories: [GEMINI_WORKSPACE],
     yolo: true,

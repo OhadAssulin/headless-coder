@@ -5,7 +5,7 @@ import { constants as fsConstants } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { createCoder } from '@headless-coder-sdk/core/factory';
-import { CODER_TYPES } from '@headless-coder-sdk/core';
+import { CODER_NAME as CLAUDE_CODER_NAME } from '@headless-coder-sdk/claude-adapter';
 
 const WORKSPACE = process.env.CLAUDE_RESUME_WORKSPACE ?? '/tmp/headless-coder-sdk/test_claude_resume';
 const CONFIG_SOURCE = process.env.CLAUDE_STREAM_CONFIG_SOURCE ?? '/tmp/headless-coder-sdk/test_claude/.claude';
@@ -37,7 +37,7 @@ test('claude resumes a conversation', async t => {
   await hydrateClaudeConfig(configDir);
   process.env.CLAUDE_CONFIG_DIR = configDir;
 
-  const coder = createCoder(CODER_TYPES.CLAUDE_CODE, {
+  const coder = createCoder(CLAUDE_CODER_NAME, {
     workingDirectory: WORKSPACE,
     permissionMode: 'bypassPermissions',
     allowedTools: ['Write', 'Edit', 'Read', 'NotebookEdit'],

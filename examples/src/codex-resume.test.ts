@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import process from 'node:process';
 import { createCoder } from '@headless-coder-sdk/core/factory';
-import { CODER_TYPES } from '@headless-coder-sdk/core';
+import { CODER_NAME as CODEX_CODER_NAME } from '@headless-coder-sdk/codex-adapter';
 
 test('codex resumes a conversation', async () => {
-  const coder = createCoder(CODER_TYPES.CODEX, {
+  const coder = createCoder(CODEX_CODER_NAME, {
     workingDirectory: process.cwd(),
     sandboxMode: 'workspace-write',
     skipGitRepoCheck: true,

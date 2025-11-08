@@ -13,7 +13,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { JSDOM } from 'jsdom';
 import { createCoder } from '@headless-coder-sdk/core/factory';
-import { CODER_TYPES } from '@headless-coder-sdk/core';
+import { CODER_NAME as CODEX_CODER_NAME } from '@headless-coder-sdk/codex-adapter';
 import type { PromptInput } from '@headless-coder-sdk/core/types';
 
 const TARGET_DIR = '/tmp/headless-coder-sdk/test';
@@ -86,7 +86,7 @@ function buildCalculatorPrompt(targetDir: string): PromptInput {
 async function runCalculatorScenario(t: TestContext): Promise<void> {
   await prepareWorkspace(TARGET_DIR);
 
-  const coder = createCoder(CODER_TYPES.CODEX, {
+  const coder = createCoder(CODEX_CODER_NAME, {
     workingDirectory: TARGET_DIR,
     sandboxMode: 'workspace-write',
     skipGitRepoCheck: true,

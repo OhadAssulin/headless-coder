@@ -16,6 +16,8 @@ import type {
   Provider,
 } from '@headless-coder-sdk/core';
 
+export const CODER_NAME: Provider = 'codex';
+
 function extractJsonPayload(text: string | undefined): unknown | undefined {
   if (!text) return undefined;
   const fenced = text.match(/```json\s*([\s\S]+?)```/i);

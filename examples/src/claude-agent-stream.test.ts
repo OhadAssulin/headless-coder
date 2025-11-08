@@ -11,7 +11,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { JSDOM } from 'jsdom';
 import { createCoder } from '@headless-coder-sdk/core/factory';
-import { CODER_TYPES } from '@headless-coder-sdk/core';
+import { CODER_NAME as CLAUDE_CODER_NAME } from '@headless-coder-sdk/claude-adapter';
 import type { PromptInput } from '@headless-coder-sdk/core/types';
 
 const WORKSPACE = process.env.CLAUDE_STREAM_WORKSPACE ?? '/tmp/headless-coder-sdk/test_claude_stream';
@@ -105,7 +105,7 @@ async function runClaudeScenario(t: TestContext): Promise<void> {
     return;
   }
 
-  const coder = createCoder(CODER_TYPES.CLAUDE_CODE, {
+  const coder = createCoder(CLAUDE_CODER_NAME, {
     workingDirectory: WORKSPACE,
     permissionMode: 'bypassPermissions',
     allowedTools: ['Write', 'Edit', 'Read', 'NotebookEdit'],

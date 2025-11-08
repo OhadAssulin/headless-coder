@@ -17,6 +17,8 @@ import type {
   Provider,
 } from '@headless-coder-sdk/core';
 
+export const CODER_NAME: Provider = 'claude';
+
 const STRUCTURED_OUTPUT_SUFFIX =
   'You must respond with valid JSON that satisfies the provided schema. Do not include prose before or after the JSON.';
 

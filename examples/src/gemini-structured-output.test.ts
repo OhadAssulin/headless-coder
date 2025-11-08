@@ -2,7 +2,7 @@ import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import process from 'node:process';
 import { createCoder } from '@headless-coder-sdk/core/factory';
-import { CODER_TYPES } from '@headless-coder-sdk/core';
+import { CODER_NAME as GEMINI_CODER_NAME } from '@headless-coder-sdk/gemini-adapter';
 
 const WORKSPACE = process.env.GEMINI_STRUCTURED_WORKSPACE ?? process.cwd();
 
@@ -24,7 +24,7 @@ function isGeminiMissing(error: unknown): boolean {
 }
 
 test('gemini returns structured output', async t => {
-  const coder = createCoder(CODER_TYPES.GEMINI, {
+  const coder = createCoder(GEMINI_CODER_NAME, {
     workingDirectory: WORKSPACE,
     includeDirectories: [WORKSPACE],
   });

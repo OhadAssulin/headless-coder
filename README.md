@@ -20,9 +20,9 @@ Headless Coder SDK is an open-source framework that unifies multiple headless AI
 
 ```ts
 import { createCoder } from '@headless-coder-sdk/core/factory';
-import { CODER_TYPES } from '@headless-coder-sdk/core';
+import { CODER_NAME as CODEX_CODER } from '@headless-coder-sdk/codex-adapter';
 
-const coder = createCoder(CODER_TYPES.CODEX, { workingDirectory: process.cwd() });
+const coder = createCoder(CODEX_CODER, { workingDirectory: process.cwd() });
 const thread = await coder.startThread();
 const result = await thread.run('Generate a test plan for the API gateway.');
 console.log(result.text);
@@ -32,9 +32,9 @@ console.log(result.text);
 
 ```ts
 import { createCoder } from '@headless-coder-sdk/core/factory';
-import { CODER_TYPES } from '@headless-coder-sdk/core';
+import { CODER_NAME as CLAUDE_CODER } from '@headless-coder-sdk/claude-adapter';
 
-const claude = createCoder(CODER_TYPES.CLAUDE_CODE, {
+const claude = createCoder(CLAUDE_CODER, {
   workingDirectory: process.cwd(),
   permissionMode: 'bypassPermissions',
 });
@@ -55,9 +55,9 @@ console.log(followUp.text);
 
 ```ts
 import { createCoder } from '@headless-coder-sdk/core/factory';
-import { CODER_TYPES } from '@headless-coder-sdk/core';
+import { CODER_NAME as GEMINI_CODER } from '@headless-coder-sdk/gemini-adapter';
 
-const gemini = createCoder(CODER_TYPES.GEMINI, {
+const gemini = createCoder(GEMINI_CODER, {
   workingDirectory: process.cwd(),
   includeDirectories: [process.cwd()],
 });
@@ -90,9 +90,9 @@ console.log(turn.json); // Parsed object based on the schema above
 
 ```ts
 import { createCoder } from '@headless-coder-sdk/core/factory';
-import { CODER_TYPES } from '@headless-coder-sdk/core';
+import { CODER_NAME as CODEX_CODER } from '@headless-coder-sdk/codex-adapter';
 
-const codex = createCoder(CODER_TYPES.CODEX, {
+const codex = createCoder(CODEX_CODER, {
   workingDirectory: process.cwd(),
   sandboxMode: 'workspace-write',
   skipGitRepoCheck: true,
@@ -111,19 +111,21 @@ console.log(followUp.text);
 
 ```ts
 import { createCoder } from '@headless-coder-sdk/core/factory';
-import { CODER_TYPES } from '@headless-coder-sdk/core';
+import { CODER_NAME as CODEX_CODER } from '@headless-coder-sdk/codex-adapter';
+import { CODER_NAME as CLAUDE_CODER } from '@headless-coder-sdk/claude-adapter';
+import { CODER_NAME as GEMINI_CODER } from '@headless-coder-sdk/gemini-adapter';
 
-const codex = createCoder(CODER_TYPES.CODEX, {
+const codex = createCoder(CODEX_CODER, {
   workingDirectory: process.cwd(),
   sandboxMode: 'workspace-write',
   skipGitRepoCheck: true,
 });
-const claude = createCoder(CODER_TYPES.CLAUDE_CODE, {
+const claude = createCoder(CLAUDE_CODER, {
   workingDirectory: process.cwd(),
   permissionMode: 'bypassPermissions',
   allowedTools: ['Write', 'Read', 'Edit', 'NotebookEdit'],
 });
-const gemini = createCoder(CODER_TYPES.GEMINI, {
+const gemini = createCoder(GEMINI_CODER, {
   workingDirectory: process.cwd(),
   includeDirectories: [process.cwd()],
 });
