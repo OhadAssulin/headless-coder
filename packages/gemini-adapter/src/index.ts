@@ -2,8 +2,9 @@
  * @fileoverview Gemini CLI adapter integrating with the HeadlessCoder contract.
  */
 
-import { spawn } from 'node:child_process';
+import { spawn, ChildProcess } from 'node:child_process';
 import * as readline from 'node:readline';
+import { once } from 'node:events';
 import { now } from '@headless-coder-sdk/core';
 import type {
   AdapterFactory,
@@ -27,6 +28,26 @@ export function createAdapter(defaults?: StartOpts): HeadlessCoder {
 
 const STRUCTURED_OUTPUT_SUFFIX =
   'Respond with JSON that matches the provided schema. Do not include explanatory text outside the JSON.';
+
+const SOFT_KILL_DELAY_MS = 250;
+const HARD_KILL_DELAY_MS = 1500;
+const DONE = Symbol('gemini-stream-done');
+
+interface GeminiThreadState {
+  id?: string;
+  opts: StartOpts;
+  currentRun?: ActiveRun | null;
+}
+
+interface ActiveRun {
+  child: ChildProcess;
+  abortController: AbortController;
+  stopExternal: () => void;
+  aborted: boolean;
+  abortReason?: string;
+  softKillTimer?: NodeJS.Timeout;
+  hardKillTimer?: NodeJS.Timeout;
+}
 
 /**
  * Resolves the Gemini binary path, honoring user overrides.
@@ -105,7 +126,8 @@ export class GeminiAdapter implements HeadlessCoder {
    */
   async startThread(opts?: StartOpts): Promise<ThreadHandle> {
     const options = { ...this.defaultOpts, ...opts };
-    return this.createThreadHandle(options);
+    const state: GeminiThreadState = { opts: options };
+    return this.createThreadHandle(state);
   }
 
   /**
@@ -120,7 +142,8 @@ export class GeminiAdapter implements HeadlessCoder {
    */
   async resumeThread(threadId: string, opts?: StartOpts): Promise<ThreadHandle> {
     const options = { ...this.defaultOpts, ...opts };
-    return this.createThreadHandle(options, threadId);
+    const state: GeminiThreadState = { opts: options, id: threadId };
+    return this.createThreadHandle(state);
   }
 
   /**
@@ -137,52 +160,36 @@ export class GeminiAdapter implements HeadlessCoder {
    * Raises:
    *   Error: When the Gemini CLI exits with a non-zero status.
    */
-  private async runInternal(thread: ThreadHandle, input: PromptInput, opts?: RunOpts): Promise<RunResult> {
-    const startOpts = ((thread.internal as any)?.opts ?? {}) as StartOpts;
+  private async runInternal(handle: ThreadHandle, input: PromptInput, opts?: RunOpts): Promise<RunResult> {
+    const state = handle.internal as GeminiThreadState;
+    this.assertIdle(state);
     const prompt = applyOutputSchemaPrompt(input, opts?.outputSchema);
-    const args = ['--output-format', 'json', '--prompt', prompt];
-    if (startOpts.model) args.push('--model', startOpts.model);
-    if (startOpts.includeDirectories?.length) {
-      args.push('--include-directories', startOpts.includeDirectories.join(','));
-    }
-    if (startOpts.yolo) args.push('--yolo');
-
-    const proc = spawn(geminiPath(startOpts.geminiBinaryPath), args, {
-      cwd: startOpts.workingDirectory,
-      env: { ...process.env, ...(opts?.extraEnv ?? {}) },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-    const stderr: string[] = [];
-    proc.stdout.on('data', chunk => {
-      stdout += chunk.toString('utf8');
-    });
-    proc.stderr.on('data', chunk => {
-      stderr.push(chunk.toString('utf8'));
-    });
-
-    const exitCode = await new Promise<number>(resolve => proc.on('close', resolve));
-    if (exitCode !== 0) {
-      throw new Error(`gemini exited with code ${exitCode}: ${stderr.join('')}`);
-    }
-
-    let parsed: any;
+    const { child, active, cleanup } = this.spawnGeminiProcess(state, prompt, 'json', opts);
     try {
-      parsed = JSON.parse(stdout);
-    } catch {
-      parsed = { response: stdout };
+      const { stdout, stderr, exitCode } = await waitForChild(child);
+      if (active.aborted) {
+        throw createAbortError(active.abortReason);
+      }
+      if (exitCode !== 0) {
+        throw new Error(`gemini exited with code ${exitCode}: ${stderr}`);
+      }
+      const parsed = parseGeminiJson(stdout);
+      if (parsed.session_id) {
+        state.id = parsed.session_id;
+        handle.id = parsed.session_id;
+      }
+      const text = parsed.response ?? parsed.text ?? stdout;
+      const structured = opts?.outputSchema ? extractJsonPayload(text) : undefined;
+      return {
+        threadId: state.id,
+        text,
+        json: structured ?? parsed.json,
+        usage: parsed.stats,
+        raw: parsed,
+      };
+    } finally {
+      cleanup();
     }
-
-    const text = parsed.response ?? parsed.text ?? stdout;
-    const structured = opts?.outputSchema ? extractJsonPayload(text) : undefined;
-    return {
-      threadId: parsed.session_id ?? thread.id,
-      text,
-      json: structured ?? parsed.json,
-      usage: parsed.stats,
-      raw: parsed,
-    };
   }
 
   /**
@@ -199,43 +206,94 @@ export class GeminiAdapter implements HeadlessCoder {
    * Raises:
    *   Error: When the Gemini CLI process fails before emitting events.
    */
-  private async *runStreamedInternal(
-    thread: ThreadHandle,
-    input: PromptInput,
-    opts?: RunOpts,
-  ): EventIterator {
-    const startOpts = ((thread.internal as any)?.opts ?? {}) as StartOpts;
+  private runStreamedInternal(handle: ThreadHandle, input: PromptInput, opts?: RunOpts): EventIterator {
+    const state = handle.internal as GeminiThreadState;
+    this.assertIdle(state);
     const prompt = applyOutputSchemaPrompt(input, opts?.outputSchema);
-    const args = ['--output-format', 'stream-json', '--prompt', prompt];
-    if (startOpts.model) args.push('--model', startOpts.model);
-    if (startOpts.includeDirectories?.length) {
-      args.push('--include-directories', startOpts.includeDirectories.join(','));
-    }
-    if (startOpts.yolo) args.push('--yolo');
+    const { child, active, cleanup } = this.spawnGeminiProcess(state, prompt, 'stream-json', opts);
+    const queue: Array<CoderStreamEvent | typeof DONE | Error> = [];
+    const waiters: Array<(entry: CoderStreamEvent | typeof DONE | Error) => void> = [];
+    let finished = false;
 
-    const proc = spawn(geminiPath(startOpts.geminiBinaryPath), args, {
-      cwd: startOpts.workingDirectory,
-      env: { ...process.env, ...(opts?.extraEnv ?? {}) },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const push = (entry: CoderStreamEvent | typeof DONE | Error) => {
+      if (waiters.length) {
+        waiters.shift()!(entry);
+      } else {
+        queue.push(entry);
+      }
+    };
 
-    const rl = readline.createInterface({ input: proc.stdout });
-    for await (const line of rl) {
+    const next = () => {
+      if (queue.length) return Promise.resolve(queue.shift()!);
+      if (finished) return Promise.resolve(DONE);
+      return new Promise<CoderStreamEvent | typeof DONE | Error>(resolve => waiters.push(resolve));
+    };
+
+    const rl = readline.createInterface({ input: child.stdout });
+    rl.on('line', line => {
+      if (finished) return;
       let event: any;
       try {
         event = JSON.parse(line);
       } catch {
-        continue;
+        return;
       }
-
       if (event.session_id) {
-        thread.id = event.session_id;
+        state.id = event.session_id;
+        handle.id = event.session_id;
       }
-
       for (const normalized of normalizeGeminiEvent(event)) {
-        yield normalized;
+        push(normalized);
       }
-    }
+    });
+
+    const onExit = (code: number | null) => {
+      if (finished) return;
+      finished = true;
+      if (active.aborted) {
+        push({
+          type: 'cancelled',
+          provider: CODER_NAME,
+          ts: now(),
+          originalItem: { reason: active.abortReason ?? 'Interrupted' },
+        });
+        push(DONE);
+        return;
+      }
+      if (code !== 0) {
+        push(new Error(`gemini exited with code ${code}`));
+      }
+      push(DONE);
+    };
+
+    child.once('exit', onExit);
+    child.once('error', error => {
+      if (finished) return;
+      finished = true;
+      push(error);
+      push(DONE);
+    });
+
+    const iterator = {
+      [Symbol.asyncIterator]: async function* (this: GeminiAdapter) {
+        try {
+          while (true) {
+            const entry = await next();
+            if (entry === DONE) break;
+            if (entry instanceof Error) throw entry;
+            yield entry;
+          }
+        } finally {
+          cleanup();
+          rl.close();
+          if (!finished && !active.aborted) {
+            this.abortChild(state, 'Stream closed');
+          }
+        }
+      }.bind(this),
+    };
+
+    return iterator;
   }
 
   /**
@@ -248,24 +306,121 @@ export class GeminiAdapter implements HeadlessCoder {
    *   Session identifier if present.
    */
   getThreadId(thread: ThreadHandle): string | undefined {
-    return thread.id;
+    const state = thread.internal as GeminiThreadState;
+    return state.id;
   }
 
-  private createThreadHandle(options: StartOpts, threadId?: string): ThreadHandle {
+  private createThreadHandle(state: GeminiThreadState): ThreadHandle {
     const handle: ThreadHandle = {
-      provider: 'gemini',
-      id: threadId,
-      internal: { opts: options },
+      provider: CODER_NAME,
+      id: state.id,
+      internal: state,
       run: (input, opts) => this.runInternal(handle, input, opts),
       runStreamed: (input, opts) => this.runStreamedInternal(handle, input, opts),
+      interrupt: async reason => {
+        this.abortChild(state, reason ?? 'Interrupted');
+      },
     };
     return handle;
+  }
+
+  private spawnGeminiProcess(
+    state: GeminiThreadState,
+    prompt: string,
+    mode: 'json' | 'stream-json',
+    opts?: RunOpts,
+  ) {
+    const startOpts = state.opts ?? {};
+    const args = buildGeminiArgs(startOpts, prompt, mode);
+    const child = spawn(geminiPath(startOpts.geminiBinaryPath), args, {
+      cwd: startOpts.workingDirectory,
+      env: { ...process.env, ...(opts?.extraEnv ?? {}) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    const abortController = new AbortController();
+    const stopExternal = linkSignal(opts?.signal, reason => {
+      if (!abortController.signal.aborted) {
+        abortController.abort(reason ?? 'Interrupted');
+        this.abortChild(state, reason);
+      }
+    });
+
+    const active: ActiveRun = {
+      child,
+      abortController,
+      stopExternal,
+      aborted: false,
+    };
+    state.currentRun = active;
+
+    child.once('error', () => {
+      // handled by waiters
+    });
+
+    return {
+      child,
+      active,
+      cleanup: () => {
+        stopExternal();
+        this.clearKillTimers(active);
+        if (state.currentRun === active) {
+          state.currentRun = null;
+        }
+        if (!child.killed && child.exitCode === null) {
+          child.kill('SIGTERM');
+        }
+      },
+    };
+  }
+
+  private abortChild(state: GeminiThreadState, reason?: string): void {
+    const active = state.currentRun;
+    if (!active || active.aborted) return;
+    active.aborted = true;
+    active.abortReason = reason ?? 'Interrupted';
+    try {
+      active.child.stdin?.end();
+    } catch {
+      // ignore
+    }
+    if (!active.softKillTimer) {
+      active.softKillTimer = setTimeout(() => {
+        if (!active.child.killed) {
+          active.child.kill('SIGTERM');
+        }
+      }, SOFT_KILL_DELAY_MS);
+    }
+    if (!active.hardKillTimer) {
+      active.hardKillTimer = setTimeout(() => {
+        if (!active.child.killed) {
+          active.child.kill('SIGKILL');
+        }
+      }, HARD_KILL_DELAY_MS);
+    }
+  }
+
+  private clearKillTimers(active: ActiveRun): void {
+    if (active.softKillTimer) {
+      clearTimeout(active.softKillTimer);
+      active.softKillTimer = undefined;
+    }
+    if (active.hardKillTimer) {
+      clearTimeout(active.hardKillTimer);
+      active.hardKillTimer = undefined;
+    }
+  }
+
+  private assertIdle(state: GeminiThreadState): void {
+    if (state.currentRun) {
+      throw new Error('Gemini adapter only supports one in-flight run per thread.');
+    }
   }
 }
 
 function normalizeGeminiEvent(event: any): CoderStreamEvent[] {
   const ts = now();
-  const provider: Provider = 'gemini';
+  const provider: Provider = CODER_NAME;
   const ev = event ?? {};
 
   switch (ev.type) {
@@ -346,4 +501,70 @@ function normalizeGeminiEvent(event: any): CoderStreamEvent[] {
         },
       ];
   }
+}
+
+function buildGeminiArgs(opts: StartOpts, prompt: string, format: 'json' | 'stream-json'): string[] {
+  const args = ['--output-format', format, '--prompt', prompt];
+  if (opts.model) args.push('--model', opts.model);
+  if (opts.includeDirectories?.length) {
+    args.push('--include-directories', opts.includeDirectories.join(','));
+  }
+  if (opts.yolo) args.push('--yolo');
+  return args;
+}
+
+async function waitForChild(child: ChildProcess): Promise<{ stdout: string; stderr: string; exitCode: number | null }>
+{
+  const stdoutChunks: Buffer[] = [];
+  const stderrChunks: Buffer[] = [];
+  child.stdout?.on('data', chunk => stdoutChunks.push(Buffer.from(chunk)));
+  child.stderr?.on('data', chunk => stderrChunks.push(Buffer.from(chunk)));
+  return await new Promise((resolve, reject) => {
+    const cleanup = () => {
+      child.removeListener('exit', onExit);
+      child.removeListener('error', onError);
+    };
+    const onExit = (code: number | null) => {
+      cleanup();
+      resolve({
+        stdout: Buffer.concat(stdoutChunks).toString('utf8'),
+        stderr: Buffer.concat(stderrChunks).toString('utf8'),
+        exitCode: code,
+      });
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    child.once('exit', onExit);
+    child.once('error', onError);
+  });
+}
+
+function parseGeminiJson(output: string): any {
+  try {
+    return JSON.parse(output);
+  } catch {
+    return { response: output };
+  }
+}
+
+function linkSignal(signal: AbortSignal | undefined, onAbort: (reason?: string) => void): () => void {
+  if (!signal) return () => {};
+  const handler = () => onAbort(reasonToString(signal.reason));
+  signal.addEventListener('abort', handler, { once: true });
+  return () => signal.removeEventListener('abort', handler);
+}
+
+function createAbortError(reason?: string): Error {
+  const error = new Error(reason ?? 'Operation was interrupted');
+  error.name = 'AbortError';
+  (error as any).code = 'interrupted';
+  return error;
+}
+
+function reasonToString(reason: unknown): string | undefined {
+  if (typeof reason === 'string') return reason;
+  if (reason instanceof Error && reason.message) return reason.message;
+  return undefined;
 }
