@@ -247,6 +247,22 @@ export class GeminiAdapter implements HeadlessCoder {
       }
     };
     rl.on('line', handleLine);
+    const handleClose = () => {
+      if (finished) return;
+      finished = true;
+      if (active.aborted) {
+        const reason = active.abortReason ?? 'Interrupted';
+        push({
+          type: 'cancelled',
+          provider: CODER_NAME,
+          ts: now(),
+          originalItem: { reason },
+        });
+        push(interruptedErrorEvent(reason));
+      }
+      push(DONE);
+    };
+    rl.once('close', handleClose);
 
     const onExit = (code: number | null) => {
       if (finished) return;
@@ -287,7 +303,7 @@ export class GeminiAdapter implements HeadlessCoder {
             yield entry;
           }
         } finally {
-          cleanup(handleLine, rl);
+          cleanup(handleLine, rl, handleClose);
           if (!finished && !active.aborted) {
             this.abortChild(state, 'Stream closed');
           }
@@ -363,11 +379,18 @@ export class GeminiAdapter implements HeadlessCoder {
     return {
       child,
       active,
-      cleanup: (lineHandler?: (line: string) => void, rl?: readline.Interface) => {
+      cleanup: (
+        lineHandler?: (line: string) => void,
+        rl?: readline.Interface,
+        closeHandler?: () => void,
+      ) => {
         stopExternal();
         this.clearKillTimers(active);
         if (lineHandler && rl) {
           rl.off('line', lineHandler);
+          if (closeHandler) {
+            rl.off('close', closeHandler);
+          }
           rl.close();
         }
         destroyChildStreams(child);
