@@ -7,7 +7,7 @@
 
 ---
 
-**Headless Coder SDK** unifies multiple *headless AI-coder SDKs* — OpenAI Codex, Anthropic Claude Agent, and Google Gemini CLI — under one consistent interface.  
+**Headless Coder SDK** unifies multiple *headless AI-coder SDKs* - OpenAI Codex, Anthropic Claude Agent, and Google Gemini CLI - under one consistent interface.  
 It standardizes threads, streaming, structured outputs, permissions, and sandboxing, allowing you to build AI coding tools or autonomous agents that switch backends with a single line of code.
 
 ---
@@ -17,7 +17,7 @@ It standardizes threads, streaming, structured outputs, permissions, and sandbox
 - Unified threads and streaming API  
 - Structured output and sandbox enforcement  
 - Works in Node, Electron, or CI pipelines  
-- Extensible — add your own adapters easily  
+- Extensible - add your own adapters easily  
 
 ---
 
@@ -202,7 +202,7 @@ When aborted, streams emit a `cancelled` event and async runs throw an `AbortErr
 ## 🧱 Build Your Own Adapter
 
 Want to support another provider?  
-Follow the [Create Your Own Adapter guide](docs/create-your-own-adapter.md) — it covers exports, registry usage, event mapping, and sandbox permissions.
+Follow the [Create Your Own Adapter guide](docs/create-your-own-adapter.md) - it covers exports, registry usage, event mapping, and sandbox permissions.
 
 ---
 
@@ -213,4 +213,4 @@ Open an [issue](https://github.com/OhadAssulin/headless-coder-sdk/issues) or sub
 
 ---
 
-© 2025 Ohad Assulin — MIT License
+© 2025 Ohad Assulin - MIT License
