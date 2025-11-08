@@ -230,7 +230,7 @@ export class GeminiAdapter implements HeadlessCoder {
     };
 
     const rl = readline.createInterface({ input: child.stdout });
-    rl.on('line', line => {
+    const handleLine = (line: string) => {
       if (finished) return;
       let event: any;
       try {
@@ -245,7 +245,8 @@ export class GeminiAdapter implements HeadlessCoder {
       for (const normalized of normalizeGeminiEvent(event)) {
         push(normalized);
       }
-    });
+    };
+    rl.on('line', handleLine);
 
     const onExit = (code: number | null) => {
       if (finished) return;
@@ -286,8 +287,7 @@ export class GeminiAdapter implements HeadlessCoder {
             yield entry;
           }
         } finally {
-          cleanup();
-          rl.close();
+          cleanup(handleLine, rl);
           if (!finished && !active.aborted) {
             this.abortChild(state, 'Stream closed');
           }
@@ -363,9 +363,15 @@ export class GeminiAdapter implements HeadlessCoder {
     return {
       child,
       active,
-      cleanup: () => {
+      cleanup: (lineHandler?: (line: string) => void, rl?: readline.Interface) => {
         stopExternal();
         this.clearKillTimers(active);
+        if (lineHandler && rl) {
+          rl.off('line', lineHandler);
+          rl.close();
+        }
+        destroyChildStreams(child);
+        child.removeAllListeners();
         if (state.currentRun === active) {
           state.currentRun = null;
         }
@@ -580,4 +586,20 @@ function interruptedErrorEvent(reason?: string): CoderStreamEvent {
     ts: now(),
     originalItem: { reason },
   };
+}
+
+function destroyChildStreams(child: ChildProcess): void {
+  destroyReadable(child.stdout);
+  destroyReadable(child.stderr);
+}
+
+function destroyReadable(stream?: NodeJS.ReadableStream | null): void {
+  if (!stream) return;
+  stream.removeAllListeners();
+  if (stream.destroyed) return;
+  try {
+    stream.destroy();
+  } catch {
+    // ignore
+  }
 }
