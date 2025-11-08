@@ -2,7 +2,7 @@
  * @fileoverview Claude Agent SDK adapter implementing the HeadlessCoder interface.
  */
 
-import { query, type SDKMessage, type Options } from '@anthropic-ai/claude-agent-sdk';
+import { query, type SDKMessage, type Options, type Query as ClaudeQuery } from '@anthropic-ai/claude-agent-sdk';
 import { randomUUID } from 'node:crypto';
 import { now } from '@headless-coder-sdk/core';
 import type {
@@ -24,6 +24,21 @@ export function createAdapter(defaults?: StartOpts): HeadlessCoder {
   return new ClaudeAdapter(defaults);
 }
 (createAdapter as AdapterFactory).coderName = CODER_NAME;
+
+interface ClaudeThreadState {
+  sessionId: string;
+  opts: StartOpts;
+  resume: boolean;
+  currentRun?: ActiveClaudeRun | null;
+}
+
+interface ActiveClaudeRun {
+  generator: ClaudeQuery;
+  abortController: AbortController;
+  stopExternal: () => void;
+  aborted: boolean;
+  abortReason?: string;
+}
 
 const STRUCTURED_OUTPUT_SUFFIX =
   'You must respond with valid JSON that satisfies the provided schema. Do not include prose before or after the JSON.';
@@ -96,7 +111,12 @@ export class ClaudeAdapter implements HeadlessCoder {
   async startThread(opts?: StartOpts): Promise<ThreadHandle> {
     const options = { ...this.defaultOpts, ...opts };
     const id = options.resume ?? randomUUID();
-    return this.createThreadHandle(id, options, false);
+    const state: ClaudeThreadState = {
+      sessionId: id,
+      opts: options,
+      resume: false,
+    };
+    return this.createThreadHandle(state);
   }
 
   /**
@@ -111,7 +131,12 @@ export class ClaudeAdapter implements HeadlessCoder {
    */
   async resumeThread(threadId: string, opts?: StartOpts): Promise<ThreadHandle> {
     const options = { ...this.defaultOpts, ...opts };
-    return this.createThreadHandle(threadId, options, true);
+    const state: ClaudeThreadState = {
+      sessionId: threadId,
+      opts: options,
+      resume: true,
+    };
+    return this.createThreadHandle(state);
   }
 
   /**
@@ -124,11 +149,9 @@ export class ClaudeAdapter implements HeadlessCoder {
    * Returns:
    *   Options ready for the Claude Agent SDK.
    */
-  private buildOptions(handle: ThreadHandle, runOpts?: RunOpts): Options {
-    const internalState = (handle.internal as any) ?? {};
-    const startOpts = (internalState.opts ?? {}) as StartOpts;
-    const shouldResume = internalState.resume === true || !!startOpts.resume;
-    const resumeId = shouldResume ? (internalState.sessionId ?? handle.id) : undefined;
+  private buildOptions(state: ClaudeThreadState, runOpts?: RunOpts): Options {
+    const startOpts = state.opts ?? {};
+    const resumeId = state.resume ? state.sessionId : undefined;
     return {
       cwd: startOpts.workingDirectory,
       allowedTools: startOpts.allowedTools,
@@ -158,13 +181,20 @@ export class ClaudeAdapter implements HeadlessCoder {
    *   Error: Propagated when the Claude Agent SDK surfaces a failure event.
    */
   private async runInternal(thread: ThreadHandle, input: PromptInput, runOpts?: RunOpts): Promise<RunResult> {
+    const state = thread.internal as ClaudeThreadState;
+    this.assertIdle(state);
     const structuredPrompt = applyOutputSchemaPrompt(toPrompt(input), runOpts?.outputSchema);
-    const options = this.buildOptions(thread, runOpts);
+    const options = this.buildOptions(state, runOpts);
     const generator = query({ prompt: structuredPrompt, options });
+    const active = this.registerRun(state, generator, runOpts?.signal);
     let lastAssistant = '';
     let finalResult: any;
     try {
       for await (const message of generator as AsyncGenerator<SDKMessage, void, void>) {
+        this.captureSessionId(state, thread, message);
+        if (active.abortController.signal.aborted) {
+          throw createAbortError(active.abortReason);
+        }
         const type = (message as any)?.type?.toLowerCase?.();
         if (!type) continue;
         if (type.includes('result')) {
@@ -176,18 +206,26 @@ export class ClaudeAdapter implements HeadlessCoder {
         }
       }
     } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
       if (finalResult && claudeResultIndicatesError(finalResult)) {
         throw new Error(buildClaudeResultErrorMessage(finalResult), {
           cause: error instanceof Error ? error : undefined,
         });
       }
       throw error;
+    } finally {
+      this.cleanupRun(state, active);
+    }
+    if (active.abortController.signal.aborted) {
+      throw createAbortError(active.abortReason);
     }
     if (finalResult && claudeResultIndicatesError(finalResult)) {
       throw new Error(buildClaudeResultErrorMessage(finalResult));
     }
     const structured = runOpts?.outputSchema ? extractJsonPayload(lastAssistant) : undefined;
-    return { threadId: thread.id, text: lastAssistant, raw: finalResult, json: structured };
+    return { threadId: state.sessionId, text: lastAssistant, raw: finalResult, json: structured };
   }
 
   /**
@@ -204,31 +242,59 @@ export class ClaudeAdapter implements HeadlessCoder {
    * Raises:
    *   Error: Propagated when the Claude Agent SDK terminates with an error.
    */
-  private async *runStreamedInternal(
+  private runStreamedInternal(
     thread: ThreadHandle,
     input: PromptInput,
     runOpts?: RunOpts,
   ): EventIterator {
+    const state = thread.internal as ClaudeThreadState;
+    this.assertIdle(state);
     const structuredPrompt = applyOutputSchemaPrompt(toPrompt(input), runOpts?.outputSchema);
-    const options = this.buildOptions(thread, runOpts);
+    const options = this.buildOptions(state, runOpts);
     const generator = query({ prompt: structuredPrompt, options });
-    let sawDone = false;
-    for await (const message of generator as AsyncGenerator<SDKMessage, void, void>) {
-      const events = normalizeClaudeStreamMessage(message, thread.id);
-      for (const event of events) {
-        if (event.type === 'error') {
-          yield event;
-          return;
+    const adapter = this;
+
+    return {
+      async *[Symbol.asyncIterator]() {
+        const active = adapter.registerRun(state, generator, runOpts?.signal);
+        let sawDone = false;
+        try {
+          for await (const message of generator as AsyncGenerator<SDKMessage, void, void>) {
+            adapter.captureSessionId(state, thread, message);
+            if (active.abortController.signal.aborted) {
+              throw createAbortError(active.abortReason);
+            }
+            const events = normalizeClaudeStreamMessage(message, state.sessionId);
+            for (const event of events) {
+              if (event.type === 'error') {
+                yield event;
+                return;
+              }
+              if (event.type === 'done') {
+                sawDone = true;
+              }
+              yield event;
+            }
+          }
+          if (!sawDone) {
+            yield { type: 'done', provider: CODER_NAME, ts: now(), originalItem: { reason: 'completed' } };
+          }
+        } catch (error) {
+          if (isAbortError(error)) {
+            yield {
+              type: 'cancelled',
+              provider: CODER_NAME,
+              ts: now(),
+              originalItem: { reason: active.abortReason ?? 'Interrupted' },
+            };
+            return;
+          }
+          throw error;
+        } finally {
+          adapter.cleanupRun(state, active);
         }
-        if (event.type === 'done') {
-          sawDone = true;
-        }
-        yield event;
-      }
-    }
-    if (!sawDone) {
-      yield { type: 'done', provider: 'claude', ts: now(), originalItem: { reason: 'completed' } };
-    }
+      },
+    };
   }
 
   /**
@@ -241,23 +307,76 @@ export class ClaudeAdapter implements HeadlessCoder {
    *   Thread identifier if present.
    */
   getThreadId(thread: ThreadHandle): string | undefined {
-    return thread.id;
+    const state = thread.internal as ClaudeThreadState;
+    return state.sessionId;
   }
-  private createThreadHandle(sessionId: string, options: StartOpts, resume: boolean): ThreadHandle {
+
+  private createThreadHandle(state: ClaudeThreadState): ThreadHandle {
     const handle: ThreadHandle = {
-      provider: 'claude',
-      id: sessionId,
-      internal: { sessionId, opts: options, resume },
+      provider: CODER_NAME,
+      id: state.sessionId,
+      internal: state,
       run: (input, runOpts) => this.runInternal(handle, input, runOpts),
       runStreamed: (input, runOpts) => this.runStreamedInternal(handle, input, runOpts),
+      interrupt: async reason => {
+        this.abortCurrentRun(state, reason ?? 'Interrupted');
+      },
     };
     return handle;
+  }
+
+  private registerRun(state: ClaudeThreadState, generator: ClaudeQuery, signal?: AbortSignal): ActiveClaudeRun {
+    const abortController = new AbortController();
+    const stopExternal = linkSignal(signal, reason => this.abortCurrentRun(state, reason));
+    const active: ActiveClaudeRun = {
+      generator,
+      abortController,
+      stopExternal,
+      aborted: false,
+    };
+    state.currentRun = active;
+    return active;
+  }
+
+  private cleanupRun(state: ClaudeThreadState, active: ActiveClaudeRun): void {
+    active.stopExternal();
+    if (state.currentRun === active) {
+      state.currentRun = null;
+    }
+  }
+
+  private abortCurrentRun(state: ClaudeThreadState, reason?: string): void {
+    const active = state.currentRun;
+    if (!active || active.aborted) return;
+    active.aborted = true;
+    active.abortReason = reason ?? 'Interrupted';
+    if (!active.abortController.signal.aborted) {
+      active.abortController.abort(active.abortReason);
+    }
+    if (typeof active.generator.interrupt === 'function') {
+      void active.generator.interrupt().catch(() => {});
+    }
+  }
+
+  private assertIdle(state: ClaudeThreadState): void {
+    if (state.currentRun) {
+      throw new Error('Claude adapter only supports one in-flight run per thread.');
+    }
+  }
+
+  private captureSessionId(state: ClaudeThreadState, handle: ThreadHandle, message: SDKMessage): void {
+    const sessionId = (message as any)?.session_id;
+    if (sessionId && sessionId !== state.sessionId) {
+      state.sessionId = sessionId;
+      state.resume = true;
+      handle.id = sessionId;
+    }
   }
 }
 
 function normalizeClaudeStreamMessage(message: any, threadId?: string): CoderStreamEvent[] {
   const ts = now();
-  const provider: Provider = 'claude';
+  const provider: Provider = CODER_NAME;
   const events: CoderStreamEvent[] = [];
   const typeValue = message?.type ?? message?.label ?? '';
   const typeText = typeof typeValue === 'string' ? typeValue : String(typeValue ?? '');
@@ -381,6 +500,30 @@ function normalizeClaudeStreamMessage(message: any, threadId?: string): CoderStr
       originalItem: message,
     },
   ];
+}
+
+function linkSignal(signal: AbortSignal | undefined, onAbort: (reason?: string) => void): () => void {
+  if (!signal) return () => {};
+  const handler = () => onAbort(reasonToString(signal.reason));
+  signal.addEventListener('abort', handler, { once: true });
+  return () => signal.removeEventListener('abort', handler);
+}
+
+function createAbortError(reason?: string): Error {
+  const error = new Error(reason ?? 'Operation was interrupted');
+  error.name = 'AbortError';
+  (error as any).code = 'interrupted';
+  return error;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && ((error as any).code === 'interrupted' || error.name === 'AbortError');
+}
+
+function reasonToString(reason: unknown): string | undefined {
+  if (typeof reason === 'string') return reason;
+  if (reason instanceof Error && reason.message) return reason.message;
+  return undefined;
 }
 
 function extractClaudeAssistantText(message: any): string {
