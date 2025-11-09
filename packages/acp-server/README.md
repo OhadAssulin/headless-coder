@@ -1,52 +1,117 @@
-# ACP Next.js Server
+# 🚀 Headless Coder ACP Server
 
-This Next.js 15 application exposes the Headless Coder SDK through the [Agent Communication Protocol](https://agentcommunicationprotocol.dev/introduction/welcome) (ACP). It loads adapter availability from `acp.config.json`, registers the requested providers (Codex, Claude, Gemini), and serves ACP-compatible endpoints under `/api/acp/*` with NDJSON streaming support.
+The **ACP Server** is a Next.js application that exposes the **Headless Coder SDK** via the [Agent Communication Protocol (ACP)](https://agentcommunicationprotocol.dev/introduction/welcome).  
+It dynamically loads available adapters from `acp.config.json`, registers enabled providers (**Codex**, **Claude**, **Gemini**), and exposes ACP-compatible REST + streaming endpoints under `/api/acp/*`.
 
-## Prerequisites
-- Node.js 20+
-- The Headless Coder workspace dependencies installed (`pnpm install` or `npm install` at repo root)
-- Optional: `ACP_TOKEN` environment variable to require bearer authentication
-- Provider-specific credentials (Codex CLI, Claude agent, Gemini CLI) available to the underlying adapters
+---
 
-## Configuration
-1. Review `packages/acp-server/acp.config.json` to enable/disable adapters and adjust default model/working directory/sandbox options. The file is validated against `acp.config.schema.json` at runtime.
-2. Set `ACP_TOKEN` in `.env.local` (see `.env.local.example`) if you want the API to enforce authentication.
+## ✨ Key Features
 
-## Running the server
-From the monorepo root:
+- ⚙️ **Dynamic provider configuration** using `acp.config.json`
+- 🔄 **NDJSON streaming** for real-time AI-coder responses
+- 🔐 Optional **Bearer token authentication** via `ACP_TOKEN`
+- 🧠 **Structured output** support via JSON schemas
+- 🧰 Unified interface across Codex, Claude, and Gemini adapters
+- 🚀 Built with **Next.js (Node runtime)** — deploy anywhere
+
+---
+
+## 🧩 Prerequisites
+
+- **Node.js 20+**
+- Headless Coder SDK installed (`pnpm install` or `npm install` at repo root)
+- Optional: environment variable `ACP_TOKEN` for authentication
+- Provider-specific credentials available (e.g. Codex binary, Claude API key, Gemini CLI)
+
+---
+
+## ⚙️ Configuration
+
+1. Open and edit `apps/acp-next/acp.config.json` to enable or disable adapters.  
+   The config is validated against `acp.config.schema.json` at runtime.
+
+   **Example:**
+   ```json
+   {
+     "enabledAgents": ["codex", "gemini"],
+     "defaults": {
+       "workingDirectory": ".",
+       "model": null,
+       "sandboxMode": "read-only"
+     }
+   }
+   ```
+
+2. (Optional) To enforce authentication, add an `ACP_TOKEN` variable in your environment:
+   ```bash
+   ACP_TOKEN=my-secret-token
+   ```
+   Copy `.env.local.example` → `.env.local` and fill in your desired values.
+
+---
+
+## ▶️ Running the Server
+
+From the repository root:
+
 ```bash
 # Start the ACP server on port 8000
-yarn workspace packages/acp-server dev   # or npm/pnpm equivalent
+pnpm --filter acp-next dev
+# or
+npm run dev --workspace acp-next
 ```
-The API now serves:
-- `GET /api/acp/agents` – returns enabled agents
-- `POST /api/acp/sessions` – creates a new session/thread
-- `POST /api/acp/messages?stream=true` – streams Headless Coder events as NDJSON frames
 
-## Building the server
+Once started, the API will serve the following routes:
+
+| Method | Endpoint | Description |
+|---------|-----------|-------------|
+| **GET** | `/api/acp/agents` | Lists enabled agents defined in `acp.config.json`. |
+| **POST** | `/api/acp/sessions` | Creates a new Headless Coder thread/session. |
+| **POST** | `/api/acp/messages?stream=true` | Streams Headless Coder events as NDJSON frames. |
+
+**Sample NDJSON stream output:**
+```json
+{"type":"delta","text":"Hello world!"}
+{"type":"done"}
+```
+
+---
+
+## 🏗️ Building and Deploying
+
 ```bash
-yarn workspace packages/acp-server build
+pnpm --filter acp-next build
+pnpm --filter acp-next start
 ```
-Then deploy with `yarn workspace packages/acp-server start` (or npm analog) pointing at the same configuration/credentials.
 
-## Example client
-A simple TypeScript client lives in `packages/acp-server/client`. It can be used as a template for your own integrations.
+### Deployment options
+- **Vercel** — ideal for quick serverless deployment (`runtime: nodejs` required).  
+- **Docker** — portable containerized deployment.  
+- **Render / Fly.io / AWS** — any Node 20+ runtime will work.
 
+Make sure your deployment includes:
+- `ACP_TOKEN` (if auth required)
+- Correct provider credentials (Codex CLI, Claude, Gemini)
+
+---
+
+## 🧪 Testing & Client Example
+
+An example TypeScript client is available under `apps/acp-next/client`.
+
+### Run built-in tests
 ```bash
-# Run the ACP server first (see above)
-# In a second terminal, execute the client tests
-npm run acp:e2e
+pnpm --filter acp-next dev   # start server
+pnpm run acp:e2e             # execute client integration tests
 ```
-The e2e script launches the server, waits for readiness, then runs `client/src/test.ts` inside this package which:
+
+The E2E test:
 1. Calls `GET /api/acp/agents`
-2. Validates that at least one agent is available
+2. Opens a session for the first provider
+3. Sends a structured output request
+4. Streams and validates NDJSON frames
 
-### “Interesting” client example
-Below is a minimal Node client (can live anywhere) that:
-1. Lists agents.
-2. Creates a session for the first provider.
-3. Sends a prompt requesting structured JSON output.
-4. Streams NDJSON frames and prints them as they arrive.
+### Minimal standalone client
 
 ```ts
 import fetch from 'node-fetch';
@@ -57,16 +122,14 @@ const headers = process.env.ACP_TOKEN
   : { 'Content-Type': 'application/json' };
 
 async function main() {
-  const agentsRes = await fetch(`${BASE_URL}/api/acp/agents`, { headers });
-  const agents = (await agentsRes.json()).agents;
-  const provider = agents[0].id;
+  const agents = await (await fetch(`${BASE_URL}/api/acp/agents`, { headers })).json();
+  const provider = agents.agents[0].id;
 
-  const sessionRes = await fetch(`${BASE_URL}/api/acp/sessions`, {
+  const session = await (await fetch(`${BASE_URL}/api/acp/sessions`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ provider }),
-  });
-  const { sessionId } = await sessionRes.json();
+  })).json();
 
   const schema = {
     type: 'object',
@@ -81,8 +144,8 @@ async function main() {
     method: 'POST',
     headers,
     body: JSON.stringify({
-      sessionId,
-      content: 'Review the latest commit and explain top risks.',
+      sessionId: session.sessionId,
+      content: 'Review the latest commit and explain key risks.',
       outputSchema: schema,
     }),
   });
@@ -96,10 +159,52 @@ async function main() {
   }
 }
 
-main().catch(err => {
-  console.error('Client failed', err);
-  process.exit(1);
-});
+main().catch(console.error);
 ```
 
-Feel free to expand the client to create sessions, send prompts, and consume streamed NDJSON frames using the same APIs demonstrated in the script.
+---
+
+## 📊 API Flow Overview
+
+```mermaid
+sequenceDiagram
+  participant Client
+  participant ACP-Next Server
+  participant HeadlessCoder SDK
+  participant Provider (Codex/Claude/Gemini)
+
+  Client->>ACP-Next Server: POST /api/acp/sessions
+  ACP-Next Server->>HeadlessCoder SDK: createCoder() + startThread()
+  ACP-Next Server-->>Client: { sessionId }
+
+  Client->>ACP-Next Server: POST /api/acp/messages?stream=true
+  ACP-Next Server->>HeadlessCoder SDK: thread.runStreamed()
+  HeadlessCoder SDK->>Provider: execute task
+  loop Streaming NDJSON
+    ACP-Next Server-->>Client: {"type":"delta","text":"..."}
+  end
+  ACP-Next Server-->>Client: {"type":"done"}
+```
+
+---
+
+## 🛠️ Development Notes
+
+- **Dynamic imports** ensure only enabled adapters are bundled.
+- Routes export `runtime = 'nodejs'` for CLI-based adapters (Codex, Gemini).
+- Sessions are in-memory by default; add Redis/Postgres for persistence.
+- Works with official ACP SDK clients (e.g. BeeAI, Zed).
+
+---
+
+## 🧾 License
+
+MIT © 2025 [Ohad Assulin](https://github.com/OhadAssulin)
+
+---
+
+### 🤝 Contributing
+
+Pull requests and issues are welcome!  
+If you encounter a bug or have ideas for improvement, open an issue on GitHub:
+👉 [https://github.com/OhadAssulin/headless-coder-sdk/issues](https://github.com/OhadAssulin/headless-coder-sdk/issues)
