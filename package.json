@@ -5,14 +5,13 @@
   "type": "module",
   "workspaces": [
     "packages/*",
-    "examples",
-    "apps/*"
+    "examples"
   ],
   "scripts": {
     "build": "node ./scripts/run-workspaces.mjs build",
     "lint": "eslint .",
     "test": "node ./scripts/run-workspaces.mjs test",
-    "acp:e2e": "node scripts/run-acp-e2e.mjs"
+    "acp:e2e": "npm run e2e --workspace packages/headless-coder-acp-server"
   },
   "devDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.30",
