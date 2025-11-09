@@ -25,7 +25,17 @@ class SessionStore {
   }
 }
 
-export const sessions = new SessionStore();
+const GLOBAL_KEY = Symbol.for('acp.sessionStore');
+
+function getGlobalStore(): SessionStore {
+  const globalAny = globalThis as { [GLOBAL_KEY]?: SessionStore };
+  if (!globalAny[GLOBAL_KEY]) {
+    globalAny[GLOBAL_KEY] = new SessionStore();
+  }
+  return globalAny[GLOBAL_KEY]!;
+}
+
+export const sessions = getGlobalStore();
 
 export function buildSessionId(provider: ProviderId, threadId?: string): string {
   const suffix = threadId ?? randomUUID();
