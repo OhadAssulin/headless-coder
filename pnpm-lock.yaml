@@ -340,12 +340,12 @@ packages:
     resolution: {directory: packages/claude-adapter, type: directory}
     peerDependencies:
       '@anthropic-ai/claude-agent-sdk': '*'
-      '@headless-coder-sdk/core': ^0.14.1
+      '@headless-coder-sdk/core': ^0.15.0
 
   '@headless-coder-sdk/codex-adapter@file:packages/codex-adapter':
     resolution: {directory: packages/codex-adapter, type: directory}
     peerDependencies:
-      '@headless-coder-sdk/core': ^0.14.1
+      '@headless-coder-sdk/core': ^0.15.0
       '@openai/codex-sdk': ^0.57.0
 
   '@headless-coder-sdk/core@file:packages/core':
@@ -354,7 +354,7 @@ packages:
   '@headless-coder-sdk/gemini-adapter@file:packages/gemini-adapter':
     resolution: {directory: packages/gemini-adapter, type: directory}
     peerDependencies:
-      '@headless-coder-sdk/core': ^0.14.1
+      '@headless-coder-sdk/core': ^0.15.0
 
   '@i-am-bee/acp-sdk@0.0.6':
     resolution: {integrity: sha512-8CdD8Ehm/Tj45ZSuyVCv8e/+LIHH32FTQrS66+UzE5sSNbkPBA81+UyjE5q36PhmxwXYJZULbboPNnaWk4zsZQ==}

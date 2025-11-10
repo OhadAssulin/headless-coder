@@ -38,12 +38,9 @@ npm i @headless-coder-sdk/core @headless-coder-sdk/codex-adapter
 ```
 
 ```ts
-import { registerAdapter, createCoder } from '@headless-coder-sdk/core';
-import { CODER_NAME as CODEX, createAdapter as createCodex } from '@headless-coder-sdk/codex-adapter';
+import { createHeadlessCodex } from '@headless-coder-sdk/codex-adapter';
 
-registerAdapter(CODEX, createCodex);
-
-const coder = createCoder(CODEX);
+const coder = createHeadlessCodex({ workingDirectory: process.cwd() });
 const thread = await coder.startThread();
 const result = await thread.run('Write a hello world script');
 console.log(result.text);
@@ -70,12 +67,9 @@ console.log(result.text);
 ## 🌊 Streaming Example (Claude)
 
 ```ts
-import { registerAdapter, createCoder } from '@headless-coder-sdk/core/factory';
-import { CODER_NAME as CLAUDE_CODER, createAdapter as createClaudeAdapter } from '@headless-coder-sdk/claude-adapter';
+import { createHeadlessClaude } from '@headless-coder-sdk/claude-adapter';
 
-registerAdapter(CLAUDE_CODER, createClaudeAdapter);
-
-const claude = createCoder(CLAUDE_CODER, {
+const claude = createHeadlessClaude({
   workingDirectory: process.cwd(),
   permissionMode: 'bypassPermissions',
 });
@@ -97,12 +91,9 @@ console.log(followUp.text);
 ## 🧩 Structured Output Example (Gemini)
 
 ```ts
-import { registerAdapter, createCoder } from '@headless-coder-sdk/core/factory';
-import { CODER_NAME as GEMINI_CODER, createAdapter as createGeminiAdapter } from '@headless-coder-sdk/gemini-adapter';
+import { createHeadlessGemini } from '@headless-coder-sdk/gemini-adapter';
 
-registerAdapter(GEMINI_CODER, createGeminiAdapter);
-
-const gemini = createCoder(GEMINI_CODER, {
+const gemini = createHeadlessGemini({
   workingDirectory: process.cwd(),
   includeDirectories: [process.cwd()],
 });
@@ -153,27 +144,15 @@ console.log(followUp.text);
 ## 🔄 Multi-Provider Workflow
 
 ```ts
-import {
-  registerAdapter,
-  createCoder,
-} from '@headless-coder-sdk/core/factory';
-import {
-  CODER_NAME as CODEX,
-  createAdapter as createCodex,
-} from '@headless-coder-sdk/codex-adapter';
-import {
-  CODER_NAME as CLAUDE,
-  createAdapter as createClaude,
-} from '@headless-coder-sdk/claude-adapter';
-import {
-  CODER_NAME as GEMINI,
-  createAdapter as createGemini,
-} from '@headless-coder-sdk/gemini-adapter';
+import { createHeadlessCodex } from '@headless-coder-sdk/codex-adapter';
+import { createHeadlessClaude } from '@headless-coder-sdk/claude-adapter';
+import { createHeadlessGemini } from '@headless-coder-sdk/gemini-adapter';
 
-registerAdapter(CODEX, createCodex);
-registerAdapter(CLAUDE, createClaude);
-registerAdapter(GEMINI, createGemini);
+const codex = createHeadlessCodex();
+const claude = createHeadlessClaude();
+const gemini = createHeadlessGemini({ workingDirectory: process.cwd() });
 
+// 1) Claude + Codex perform code review concurrently and emit structured findings.
 const reviewSchema = {
   type: 'object',
   properties: {
@@ -194,7 +173,6 @@ const reviewSchema = {
 } as const;
 
 async function runMultiProviderReview(commitHash: string) {
-  const [claude, codex] = [createCoder(CLAUDE), createCoder(CODEX)];
   const [claudeThread, codexThread] = await Promise.all([
     claude.startThread(),
     codex.startThread(),
@@ -213,7 +191,7 @@ async function runMultiProviderReview(commitHash: string) {
     ...(codexReview.json?.issues ?? []),
   ];
 
-  const gemini = createCoder(GEMINI, { workingDirectory: process.cwd() });
+  // 2) Gemini waits for both reviewers, then fixes each issue sequentially.
   const geminiThread = await gemini.startThread();
 
   for (const issue of combinedIssues) {
@@ -229,11 +207,47 @@ async function runMultiProviderReview(commitHash: string) {
     ]);
   }
 
-  await Promise.all([claude.close?.(claudeThread), codex.close?.(codexThread), gemini.close?.(geminiThread)]);
+  await Promise.all([
+    claude.close?.(claudeThread),
+    codex.close?.(codexThread),
+    gemini.close?.(geminiThread),
+  ]);
 }
 ```
 
-Two reviewers (Claude and Codex) analyze the same commit concurrently and emit structured findings. Gemini waits until both reviews finish, then applies fixes sequentially based on the shared structured payload.
+In this workflow two reviewers (Claude, Codex) analyze the same commit in parallel and emit structured findings. Gemini then waits until both reviews finish and applies fixes issue-by-issue using the shared structured payload.
+
+---
+
+## ⚠️ Codex Adapter Runtime
+
+- The Codex adapter forks worker processes via Node’s `child_process` API and **must run on the server**. It is safe to import in build tooling, but gate runtime usage to environments where `process.versions.node` exists.
+- A convenience helper, `createHeadlessCodex`, registers the adapter and returns a coder in one call:
+
+  ```ts
+  import { createHeadlessCodex } from '@headless-coder-sdk/codex-adapter';
+
+  if (typeof window !== 'undefined') {
+    throw new Error('Codex adapter is server-only');
+  }
+
+  const codex = createHeadlessCodex({ workingDirectory: process.cwd() });
+  ```
+
+- In frameworks like Next.js, lazy-load the helper inside server components or API routes to avoid bundling it client-side:
+
+  ```ts
+  export async function POST() {
+    if (typeof window !== 'undefined') {
+      throw new Error('Codex must run on the server');
+    }
+    const { createHeadlessCodex } = await import('@headless-coder-sdk/codex-adapter');
+    const coder = createHeadlessCodex({ workingDirectory: process.cwd() });
+    const thread = await coder.startThread();
+    const result = await thread.run('List recent commits');
+    return Response.json({ text: result.text });
+  }
+  ```
 
 ---
 
@@ -291,6 +305,23 @@ Follow the [Create Your Own Adapter guide](docs/create-your-own-adapter.md) - it
 
 Contributions welcome!  
 Open an [issue](https://github.com/OhadAssulin/headless-coder-sdk/issues) or submit a PR.
+
+---
+
+## 📦 Distribution Notes
+
+- Every workspace now emits flattened entry points at `dist/*.js` (ESM) and `dist/*.cjs` (CommonJS), with `.d.ts` files sitting beside them for better editor support.
+- You can import `createCoder` or helper utilities directly from `@headless-coder-sdk/core` and `@headless-coder-sdk/codex-adapter` without deep `dist/*/src` paths—the `main`/`module` fields now point at those root files.
+- Helper factories (`createHeadlessCodex/Claude/Gemini`) register adapters and return coders in one call, making server-only integrations simpler.
+- `package.json` is exposed via the exports map (`import '@headless-coder-sdk/core/package.json'`) for tooling that needs to inspect versions at runtime.
+- `@headless-coder-sdk/codex-adapter` forks a worker via `fileURLToPath(new URL('./worker.js', import.meta.url))`; keep `dist/worker.js` adjacent when rebundling so that child processes can spawn correctly.
+
+---
+
+## ✅ Smoke Tests
+
+- `npm run smoke` builds every workspace, packs the publishable tarballs, installs them in a throwaway project, and exercises both CommonJS and ESM entry points.
+- Set `HEADLESS_CODER_KEEP_SMOKE_TMP=1 npm run smoke` if you want to inspect the generated smoke project instead of deleting it.
 
 ---
 

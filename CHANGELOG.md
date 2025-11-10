@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.0] - 2025-11-10
+### 🗂 Documentation & Helpers
+- Core package now ships the monorepo README directly (`packages/core/README.md`) so npm consumers see the same getting-started guides without visiting GitHub.
+- Helper APIs (`createHeadlessCodex/Claude/Gemini`) are now the recommended path throughout the docs and multi-provider examples, keeping server-only usage explicit.
+
+### 🧪 Tooling
+- Smoke tests assert the presence of the helper factories across all adapters to prevent regressions.
+
 ## [0.14.1] - 2025-11-10
 ### ✨ Helper APIs
 - Added `createHeadlessClaude()` and `createHeadlessGemini()` convenience helpers, mirroring the Codex helper so consumers can get a coder without calling `registerAdapter` manually.
