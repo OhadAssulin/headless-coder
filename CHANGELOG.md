@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.13.1] - 2025-11-10
+### ✨ Packaging & DX
+- Core and every adapter now emit real entry points via `tsup`, producing both ESM (`dist/*.js`) and CommonJS (`dist/*.cjs`) bundles with colocated typings, so downstream apps can import the declared exports without diving into `dist/*/src` internals.
+- Updated exports maps to expose `factory`, `types`, adapter workers, and `package.json`, unlocking better metadata discovery and `require()` support.
+- Codex adapter gained a README that documents the worker co-location requirement, plus LICENSE files were added to every publishable package for npm completeness.
+- Bumped `@openai/codex-sdk` to `0.57.0` and refreshed peer dependency ranges to `^0.13.0` across the adapters.
+
+### 🧪 Tooling
+- Added `npm run smoke`, which builds, packs, and installs the tarballs into a throwaway project to verify both CommonJS and ESM consumers and assert that the Codex worker ships beside the entry point.
+- README now documents the new distribution layout and smoke test workflow so consumers understand the worker requirement and validation steps.
+
 ## [0.11.0] - 2025-11-09
 ### ✨ Highlights
 - Worker-based Codex adapter now propagates structured output schemas, captures stderr on failures, and exposes deterministic cancellation/error events for `run` and `runStreamed`.
