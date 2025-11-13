@@ -1,6 +1,6 @@
 {
   "name": "@headless-coder-sdk/core",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "Unified SDK for headless AI coders (Codex, Claude, Gemini) with standardized threading, streaming, and sandboxing.",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -29,6 +29,9 @@
   "publishConfig": { "access": "public" },
   "scripts": {
     "build": "tsup --config tsup.config.ts"
+  },
+  "dependencies": {
+    "@headless-coder-sdk/gemini-adapter": "workspace:^0.16.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0"

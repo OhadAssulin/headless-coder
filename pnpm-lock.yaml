@@ -34,7 +34,7 @@ importers:
         version: file:packages/codex-adapter(@headless-coder-sdk/core@file:packages/core)(@openai/codex-sdk@0.57.0)
       '@headless-coder-sdk/core':
         specifier: file:../packages/core
-        version: link:../packages/core
+        version: file:packages/core
       '@headless-coder-sdk/gemini-adapter':
         specifier: file:../packages/gemini-adapter
         version: file:packages/gemini-adapter(@headless-coder-sdk/core@file:packages/core)
@@ -105,6 +105,10 @@ importers:
         version: 5.9.3
 
   packages/core:
+    dependencies:
+      '@headless-coder-sdk/gemini-adapter':
+        specifier: workspace:^0.16.0
+        version: link:../gemini-adapter
     devDependencies:
       typescript:
         specifier: ^5.4.0
@@ -120,7 +124,7 @@ importers:
         version: file:packages/codex-adapter(@headless-coder-sdk/core@file:packages/core)(@openai/codex-sdk@0.57.0)
       '@headless-coder-sdk/core':
         specifier: file:../core
-        version: link:../core
+        version: file:packages/core
       '@headless-coder-sdk/gemini-adapter':
         specifier: file:../gemini-adapter
         version: file:packages/gemini-adapter(@headless-coder-sdk/core@file:packages/core)
@@ -354,7 +358,7 @@ packages:
   '@headless-coder-sdk/gemini-adapter@file:packages/gemini-adapter':
     resolution: {directory: packages/gemini-adapter, type: directory}
     peerDependencies:
-      '@headless-coder-sdk/core': ^0.15.0
+      '@headless-coder-sdk/core': ^0.16.0
 
   '@i-am-bee/acp-sdk@0.0.6':
     resolution: {integrity: sha512-8CdD8Ehm/Tj45ZSuyVCv8e/+LIHH32FTQrS66+UzE5sSNbkPBA81+UyjE5q36PhmxwXYJZULbboPNnaWk4zsZQ==}
@@ -1632,7 +1636,9 @@ snapshots:
       '@headless-coder-sdk/core': file:packages/core
       '@openai/codex-sdk': 0.57.0
 
-  '@headless-coder-sdk/core@file:packages/core': {}
+  '@headless-coder-sdk/core@file:packages/core':
+    dependencies:
+      '@headless-coder-sdk/gemini-adapter': link:packages/gemini-adapter
 
   '@headless-coder-sdk/gemini-adapter@file:packages/gemini-adapter(@headless-coder-sdk/core@file:packages/core)':
     dependencies:

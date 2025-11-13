@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.16.0] - 2025-11-10
+### ✨ Gemini Tool Mapping
+- Gemini adapter now emits richer `tool_use`/`tool_result` frames (name/callId/args/output/exitCode/error) so downstream ACP clients and SDK consumers can rely on structured metadata without inspecting `originalItem`.
+
+### 📚 Documentation
+- Updated the repo and core README multi-provider sections to use the canonical `registerAdapter` + `createCoder` flow, keeping the examples accurate for all environments.
+
+### 📦 Packaging
+- Bumped `@headless-coder-sdk/core` and `@headless-coder-sdk/gemini-adapter` to `0.16.0`; the core package now lists the Gemini adapter as a direct dependency, ensuring the richer tool events are always available.
+
 ## [0.15.0] - 2025-11-10
 ### 🗂 Documentation & Helpers
 - Core package now ships the monorepo README directly (`packages/core/README.md`) so npm consumers see the same getting-started guides without visiting GitHub.

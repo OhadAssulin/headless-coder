@@ -98,6 +98,7 @@ export type CoderStreamEvent =
       callId?: string;
       result?: any;
       exitCode?: number | null;
+      error?: unknown;
       ts: number;
       originalItem?: any;
     }

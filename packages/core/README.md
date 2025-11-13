@@ -144,13 +144,30 @@ console.log(followUp.text);
 ## 🔄 Multi-Provider Workflow
 
 ```ts
-import { createHeadlessCodex } from '@headless-coder-sdk/codex-adapter';
-import { createHeadlessClaude } from '@headless-coder-sdk/claude-adapter';
-import { createHeadlessGemini } from '@headless-coder-sdk/gemini-adapter';
+import {
+  registerAdapter,
+  createCoder,
+} from '@headless-coder-sdk/core/factory';
+import {
+  CODER_NAME as CODEX_CODER,
+  createAdapter as createCodexAdapter,
+} from '@headless-coder-sdk/codex-adapter';
+import {
+  CODER_NAME as CLAUDE_CODER,
+  createAdapter as createClaudeAdapter,
+} from '@headless-coder-sdk/claude-adapter';
+import {
+  CODER_NAME as GEMINI_CODER,
+  createAdapter as createGeminiAdapter,
+} from '@headless-coder-sdk/gemini-adapter';
 
-const codex = createHeadlessCodex();
-const claude = createHeadlessClaude();
-const gemini = createHeadlessGemini({ workingDirectory: process.cwd() });
+registerAdapter(CODEX_CODER, createCodexAdapter);
+registerAdapter(CLAUDE_CODER, createClaudeAdapter);
+registerAdapter(GEMINI_CODER, createGeminiAdapter);
+
+const codex = createCoder(CODEX_CODER);
+const claude = createCoder(CLAUDE_CODER);
+const gemini = createCoder(GEMINI_CODER, { workingDirectory: process.cwd() });
 
 // 1) Claude + Codex perform code review concurrently and emit structured findings.
 const reviewSchema = {
