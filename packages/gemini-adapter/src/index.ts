@@ -2,7 +2,7 @@
  * @fileoverview Gemini CLI adapter integrating with the HeadlessCoder contract.
  */
 
-import { spawn, ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, ChildProcess } from 'node:child_process';
 import * as readline from 'node:readline';
 import { once } from 'node:events';
 import {
@@ -56,6 +56,7 @@ const DONE = Symbol('gemini-stream-done');
 
 interface GeminiThreadState {
   id?: string;
+  resumeToken?: string;
   opts: StartOpts;
   currentRun?: ActiveRun | null;
 }
@@ -121,6 +122,109 @@ function extractJsonPayload(text: string | undefined): unknown | undefined {
   }
 }
 
+function captureGeminiSessionMetadata(state: GeminiThreadState, handle: ThreadHandle | undefined, payload: any): void {
+  const sessionId = extractSessionId(payload);
+  if (sessionId) {
+    state.id = sessionId;
+    state.resumeToken = sessionId;
+    if (handle) {
+      handle.id = sessionId;
+    }
+    return;
+  }
+  if (state.id) return;
+  const resumeIndex = extractSessionIndex(payload);
+  if (resumeIndex) {
+    state.resumeToken = resumeIndex;
+  }
+}
+
+function extractSessionId(payload: any): string | undefined {
+  const candidate =
+    payload?.session_id ??
+    payload?.sessionId ??
+    payload?.session?.id ??
+    payload?.session?.session_id ??
+    payload?.metadata?.session_id;
+  return typeof candidate === 'string' && candidate.length > 0 ? candidate : undefined;
+}
+
+function extractSessionIndex(payload: any): string | undefined {
+  const candidate =
+    payload?.session_index ??
+    payload?.sessionIndex ??
+    payload?.index ??
+    payload?.session?.index ??
+    payload?.session?.session_index ??
+    payload?.metadata?.session_index;
+  if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+    return String(candidate);
+  }
+  if (typeof candidate === 'string' && candidate.trim()) {
+    return candidate.trim();
+  }
+  return undefined;
+}
+
+function resolveResumeTarget(state: GeminiThreadState): string | undefined {
+  if (state.resumeToken) return state.resumeToken;
+  if (state.id) return state.id;
+  const candidate = state.opts?.resume;
+  return typeof candidate === 'string' && candidate.length > 0 ? candidate : undefined;
+}
+
+interface GeminiSessionEntry {
+  index: number;
+  id?: string;
+}
+
+function updateSessionMetadataFromList(state: GeminiThreadState, handle: ThreadHandle | undefined): void {
+  const entries = listGeminiSessions(state.opts ?? {});
+  if (!entries.length) return;
+  const latest = entries[entries.length - 1];
+  if (latest.id) {
+    state.id = latest.id;
+    state.resumeToken = latest.id;
+    if (handle) {
+      handle.id = latest.id;
+    }
+    return;
+  }
+  if (!state.id && Number.isFinite(latest.index)) {
+    state.resumeToken = String(latest.index);
+  }
+}
+
+function listGeminiSessions(opts: StartOpts): GeminiSessionEntry[] {
+  const args = ['--list-sessions'];
+  const result = spawnSync(geminiPath(opts.geminiBinaryPath), args, {
+    cwd: opts.workingDirectory ?? process.cwd(),
+    env: process.env,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (result.error || typeof result.status === 'number' && result.status !== 0) {
+    return [];
+  }
+  const output = (result.stdout && result.stdout.trim().length ? result.stdout : result.stderr) ?? '';
+  const parsed = parseGeminiSessionList(output);
+  return parsed;
+}
+
+function parseGeminiSessionList(output: string): GeminiSessionEntry[] {
+  const entries: GeminiSessionEntry[] = [];
+  const lineRegex = /^\s*(\d+)\.\s.*\[(.+?)\]\s*$/;
+  for (const line of output.split(/\r?\n/)) {
+    const match = lineRegex.exec(line);
+    if (!match) continue;
+    const index = Number.parseInt(match[1], 10);
+    if (Number.isNaN(index)) continue;
+    const id = match[2]?.trim();
+    entries.push({ index, id: id || undefined });
+  }
+  return entries;
+}
+
 /**
  * Adapter that proxies Gemini CLI headless invocations.
  *
@@ -147,7 +251,11 @@ export class GeminiAdapter implements HeadlessCoder {
    */
   async startThread(opts?: StartOpts): Promise<ThreadHandle> {
     const options = { ...this.defaultOpts, ...opts };
-    const state: GeminiThreadState = { opts: options };
+    const state: GeminiThreadState = {
+      opts: options,
+      id: typeof options.resume === 'string' ? options.resume : undefined,
+      resumeToken: typeof options.resume === 'string' ? options.resume : undefined,
+    };
     return this.createThreadHandle(state);
   }
 
@@ -162,8 +270,8 @@ export class GeminiAdapter implements HeadlessCoder {
    *   Thread handle referencing Gemini state.
    */
   async resumeThread(threadId: string, opts?: StartOpts): Promise<ThreadHandle> {
-    const options = { ...this.defaultOpts, ...opts };
-    const state: GeminiThreadState = { opts: options, id: threadId };
+    const options = { ...this.defaultOpts, ...opts, resume: threadId };
+    const state: GeminiThreadState = { opts: options, id: threadId, resumeToken: threadId };
     return this.createThreadHandle(state);
   }
 
@@ -196,9 +304,9 @@ export class GeminiAdapter implements HeadlessCoder {
         throw new Error(`gemini exited with code ${exitCode}: ${stderr}`);
       }
       const parsed = parseGeminiJson(stdout);
-      if (parsed.session_id) {
-        state.id = parsed.session_id;
-        handle.id = parsed.session_id;
+      captureGeminiSessionMetadata(state, handle, parsed);
+      if (!state.id || !state.resumeToken) {
+        updateSessionMetadataFromList(state, handle);
       }
       const text = parsed.response ?? parsed.text ?? stdout;
       const structured = opts?.outputSchema ? extractJsonPayload(text) : undefined;
@@ -261,10 +369,7 @@ export class GeminiAdapter implements HeadlessCoder {
       } catch {
         return;
       }
-      if (event.session_id) {
-        state.id = event.session_id;
-        handle.id = event.session_id;
-      }
+      captureGeminiSessionMetadata(state, handle, event);
       for (const normalized of normalizeGeminiEvent(event)) {
         push(normalized);
       }
@@ -302,6 +407,8 @@ export class GeminiAdapter implements HeadlessCoder {
       }
       if (code !== 0) {
         push(new Error(`gemini exited with code ${code}`));
+      } else if (!state.id || !state.resumeToken) {
+        updateSessionMetadataFromList(state, handle);
       }
       push(DONE);
     };
@@ -370,7 +477,8 @@ export class GeminiAdapter implements HeadlessCoder {
     opts?: RunOpts,
   ) {
     const startOpts = state.opts ?? {};
-    const args = buildGeminiArgs(startOpts, prompt, mode);
+    const resumeTarget = resolveResumeTarget(state);
+    const args = buildGeminiArgs(startOpts, prompt, mode, resumeTarget);
     const child = spawn(geminiPath(startOpts.geminiBinaryPath), args, {
       cwd: startOpts.workingDirectory,
       env: { ...process.env, ...(opts?.extraEnv ?? {}) },
@@ -556,13 +664,21 @@ function normalizeGeminiEvent(event: any): CoderStreamEvent[] {
   }
 }
 
-function buildGeminiArgs(opts: StartOpts, prompt: string, format: 'json' | 'stream-json'): string[] {
+function buildGeminiArgs(
+  opts: StartOpts,
+  prompt: string,
+  format: 'json' | 'stream-json',
+  resumeTarget?: string,
+): string[] {
   const args = ['--output-format', format, '--prompt', prompt];
   if (opts.model) args.push('--model', opts.model);
   if (opts.includeDirectories?.length) {
     args.push('--include-directories', opts.includeDirectories.join(','));
   }
   if (opts.yolo) args.push('--yolo');
+  if (resumeTarget) {
+    args.push('--resume', resumeTarget);
+  }
   return args;
 }
 
