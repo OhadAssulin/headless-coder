@@ -73,6 +73,8 @@ async function runClaudeStructured(t: TestContext): Promise<void> {
   assert.equal(typeof structured.summary, 'string');
   assert.ok(Array.isArray(structured.risks));
   assert.ok(structured.risks.length >= 1);
+  assert.ok(result.raw?.structured_output, 'Claude should return native structured output payloads.');
+  assert.deepEqual(result.raw?.structured_output, structured);
 }
 
 test('claude returns structured output', runClaudeStructured);

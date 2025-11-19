@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.19.0] - 2025-11-19
+### ✨ Claude Native Structured Outputs
+- `@headless-coder-sdk/claude-adapter` now relies entirely on Claude Agent SDK's native `structured_output`, removing the legacy prompt-based JSON parsing fallback so schemas are enforced by Claude itself.
+- Claude structured output example asserts that `structured_output` is returned, ensuring future regressions are caught by CI.
+
+### 📦 Versioning
+- Bumped every package to `0.19.0` to publish the native structured output change and keep dependencies aligned.
+
 ## [0.18.0] - 2025-11-14
 ### 🚀 Codex & Model Updates
 - Codex adapter is now built against `@openai/codex-sdk@0.58.0`, unlocking GPT-5.1 Codex and GPT-5.1 Modals support out of the box.

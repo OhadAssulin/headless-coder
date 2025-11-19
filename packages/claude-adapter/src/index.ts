@@ -61,26 +61,10 @@ interface ActiveClaudeRun {
   abortReason?: string;
 }
 
-const STRUCTURED_OUTPUT_SUFFIX =
-  'You must respond with valid JSON that satisfies the provided schema. Do not include prose before or after the JSON.';
-
 function ensureNodeRuntime(action: string): void {
   if (!isNodeRuntime) {
     throw new Error(`@headless-coder-sdk/claude-adapter can only ${action} inside Node.js.`);
   }
-}
-
-function applyOutputSchemaPrompt(input: PromptInput, schema?: object): PromptInput {
-  if (!schema) return input;
-  const schemaSnippet = JSON.stringify(schema, null, 2);
-  const systemPrompt = `${STRUCTURED_OUTPUT_SUFFIX}\nSchema:\n${schemaSnippet}`;
-  if (typeof input === 'string') {
-    return `${input}\n\n${systemPrompt}`;
-  }
-  return [
-    { role: 'system', content: systemPrompt },
-    ...input,
-  ];
 }
 
 function shouldUseNativeStructuredOutput(schema?: object): boolean {
@@ -96,20 +80,6 @@ function extractNativeStructuredOutput(result: any): unknown | undefined {
     return (result as any).structuredOutput;
   }
   return undefined;
-}
-
-function extractJsonPayload(text: string | undefined): unknown | undefined {
-  if (!text) return undefined;
-  const fenced = text.match(/```json\s*([\s\S]+?)```/i);
-  const candidate = (fenced ? fenced[1] : text).trim();
-  const start = candidate.indexOf('{');
-  const end = candidate.lastIndexOf('}');
-  if (start === -1 || end === -1 || end < start) return undefined;
-  try {
-    return JSON.parse(candidate.slice(start, end + 1));
-  } catch {
-    return undefined;
-  }
 }
 
 /**
@@ -237,8 +207,7 @@ export class ClaudeAdapter implements HeadlessCoder {
     const state = thread.internal as ClaudeThreadState;
     this.assertIdle(state);
     const useNativeStructuredOutput = shouldUseNativeStructuredOutput(runOpts?.outputSchema);
-    const promptInput = useNativeStructuredOutput ? input : applyOutputSchemaPrompt(input, runOpts?.outputSchema);
-    const prompt = toPrompt(promptInput);
+    const prompt = toPrompt(input);
     const options = this.buildOptions(state, runOpts, useNativeStructuredOutput);
     const generator = query({ prompt, options });
     const active = this.registerRun(state, generator, runOpts?.signal);
@@ -279,9 +248,7 @@ export class ClaudeAdapter implements HeadlessCoder {
     if (finalResult && claudeResultIndicatesError(finalResult)) {
       throw new Error(buildClaudeResultErrorMessage(finalResult));
     }
-    const structured = runOpts?.outputSchema
-      ? extractNativeStructuredOutput(finalResult) ?? extractJsonPayload(lastAssistant)
-      : undefined;
+    const structured = runOpts?.outputSchema ? extractNativeStructuredOutput(finalResult) : undefined;
     return { threadId: state.sessionId, text: lastAssistant, raw: finalResult, json: structured };
   }
 
@@ -308,8 +275,7 @@ export class ClaudeAdapter implements HeadlessCoder {
     const state = thread.internal as ClaudeThreadState;
     this.assertIdle(state);
     const useNativeStructuredOutput = shouldUseNativeStructuredOutput(runOpts?.outputSchema);
-    const promptInput = useNativeStructuredOutput ? input : applyOutputSchemaPrompt(input, runOpts?.outputSchema);
-    const prompt = toPrompt(promptInput);
+    const prompt = toPrompt(input);
     const options = this.buildOptions(state, runOpts, useNativeStructuredOutput);
     const generator = query({ prompt, options });
     const adapter = this;
