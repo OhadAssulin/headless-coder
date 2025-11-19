@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.22.0] - 2025-11-20
+### 🛠 Codex SDK Update
+- Bumped `@openai/codex-sdk` to `0.60.1` so the Codex adapter stays current with the latest CLI fixes and streaming improvements.
+
 ## [0.21.0] - 2025-11-20
 ### ⚡ Codex Adapter Direct Execution
 - `@headless-coder-sdk/codex-adapter` now targets `@openai/codex-sdk@0.59.0` and calls the SDK directly instead of spawning worker processes. Cancellation flows through the SDK’s native `AbortSignal` support, so both `RunOpts.signal` and `thread.interrupt()` stop Codex turns immediately with no worker fallback.
