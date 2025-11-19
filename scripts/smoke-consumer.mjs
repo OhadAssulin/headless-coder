@@ -49,8 +49,6 @@ function packWorkspace(pkg, packsDir) {
 function writeSmokeFiles(projectDir) {
   const cjs = `
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 
 const core = require('@headless-coder-sdk/core');
 const codex = require('@headless-coder-sdk/codex-adapter');
@@ -64,10 +62,6 @@ assert.equal(typeof gemini.createAdapter, 'function');
 assert.equal(typeof codex.createHeadlessCodex, 'function');
 assert.equal(typeof claude.createHeadlessClaude, 'function');
 assert.equal(typeof gemini.createHeadlessGemini, 'function');
-
-const codexPkg = path.dirname(require.resolve('@headless-coder-sdk/codex-adapter/package.json'));
-const workerPath = path.join(codexPkg, 'dist', 'worker.js');
-assert.ok(fs.existsSync(workerPath), 'codex worker.js must stay adjacent to the adapter entry point');
 
 console.log('[smoke] CommonJS imports succeeded');
 `.trimStart();

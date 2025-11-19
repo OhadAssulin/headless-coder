@@ -31,7 +31,7 @@ importers:
         version: file:packages/claude-adapter(@anthropic-ai/claude-agent-sdk@0.1.46(zod@3.25.76))(@headless-coder-sdk/core@file:packages/core)
       '@headless-coder-sdk/codex-adapter':
         specifier: file:../packages/codex-adapter
-        version: file:packages/codex-adapter(@headless-coder-sdk/core@file:packages/core)(@openai/codex-sdk@0.58.0)
+        version: file:packages/codex-adapter(@headless-coder-sdk/core@file:packages/core)(@openai/codex-sdk@0.59.0)
       '@headless-coder-sdk/core':
         specifier: file:../packages/core
         version: link:../packages/core
@@ -98,8 +98,8 @@ importers:
         specifier: workspace:*
         version: link:../core
       '@openai/codex-sdk':
-        specifier: ^0.58.0
-        version: 0.58.0
+        specifier: ^0.59.0
+        version: 0.59.0
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
@@ -117,7 +117,7 @@ importers:
         version: file:packages/claude-adapter(@anthropic-ai/claude-agent-sdk@0.1.46(zod@3.25.76))(@headless-coder-sdk/core@file:packages/core)
       '@headless-coder-sdk/codex-adapter':
         specifier: file:../codex-adapter
-        version: file:packages/codex-adapter(@headless-coder-sdk/core@file:packages/core)(@openai/codex-sdk@0.58.0)
+        version: file:packages/codex-adapter(@headless-coder-sdk/core@file:packages/core)(@openai/codex-sdk@0.59.0)
       '@headless-coder-sdk/core':
         specifier: file:../core
         version: link:../core
@@ -340,13 +340,13 @@ packages:
     resolution: {directory: packages/claude-adapter, type: directory}
     peerDependencies:
       '@anthropic-ai/claude-agent-sdk': '>=0.1.46'
-      '@headless-coder-sdk/core': ^0.20.0
+      '@headless-coder-sdk/core': ^0.21.0
 
   '@headless-coder-sdk/codex-adapter@file:packages/codex-adapter':
     resolution: {directory: packages/codex-adapter, type: directory}
     peerDependencies:
-      '@headless-coder-sdk/core': ^0.20.0
-      '@openai/codex-sdk': ^0.58.0
+      '@headless-coder-sdk/core': ^0.21.0
+      '@openai/codex-sdk': ^0.59.0
 
   '@headless-coder-sdk/core@file:packages/core':
     resolution: {directory: packages/core, type: directory}
@@ -354,7 +354,7 @@ packages:
   '@headless-coder-sdk/gemini-adapter@file:packages/gemini-adapter':
     resolution: {directory: packages/gemini-adapter, type: directory}
     peerDependencies:
-      '@headless-coder-sdk/core': ^0.20.0
+      '@headless-coder-sdk/core': ^0.21.0
 
   '@i-am-bee/acp-sdk@0.0.6':
     resolution: {integrity: sha512-8CdD8Ehm/Tj45ZSuyVCv8e/+LIHH32FTQrS66+UzE5sSNbkPBA81+UyjE5q36PhmxwXYJZULbboPNnaWk4zsZQ==}
@@ -627,8 +627,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@openai/codex-sdk@0.58.0':
-    resolution: {integrity: sha512-Z5vK294gUS9cn7bpU/lJtgzqJy1UqIGee7WMP+1Z4a6AxDcTxFCLZI4YkH9praJfrgoj5bFeu+3V9HIoBBTzcw==}
+  '@openai/codex-sdk@0.59.0':
+    resolution: {integrity: sha512-1KVRC/Z2Fp2dv4XdIUkwfF+rV9+gwdmWuWhero6jcUYurLcAckrFxQVGbiurRu/Dk2tzZvrdoE8Azoq7w89tRw==}
     engines: {node: '>=18'}
 
   '@opentelemetry/api@1.9.0':
@@ -1627,10 +1627,10 @@ snapshots:
       '@anthropic-ai/claude-agent-sdk': 0.1.46(zod@3.25.76)
       '@headless-coder-sdk/core': file:packages/core
 
-  '@headless-coder-sdk/codex-adapter@file:packages/codex-adapter(@headless-coder-sdk/core@file:packages/core)(@openai/codex-sdk@0.58.0)':
+  '@headless-coder-sdk/codex-adapter@file:packages/codex-adapter(@headless-coder-sdk/core@file:packages/core)(@openai/codex-sdk@0.59.0)':
     dependencies:
       '@headless-coder-sdk/core': file:packages/core
-      '@openai/codex-sdk': 0.58.0
+      '@openai/codex-sdk': 0.59.0
 
   '@headless-coder-sdk/core@file:packages/core': {}
 
@@ -1836,7 +1836,7 @@ snapshots:
   '@next/swc-win32-x64-msvc@15.5.6':
     optional: true
 
-  '@openai/codex-sdk@0.58.0': {}
+  '@openai/codex-sdk@0.59.0': {}
 
   '@opentelemetry/api@1.9.0': {}
 

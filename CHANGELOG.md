@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.21.0] - 2025-11-20
+### ⚡ Codex Adapter Direct Execution
+- `@headless-coder-sdk/codex-adapter` now targets `@openai/codex-sdk@0.59.0` and calls the SDK directly instead of spawning worker processes. Cancellation flows through the SDK’s native `AbortSignal` support, so both `RunOpts.signal` and `thread.interrupt()` stop Codex turns immediately with no worker fallback.
+- Removed the worker entry/export, simplified the tsup build, and refreshed smoke tests to reflect the single-entry bundle layout.
+
+### 📚 Documentation
+- Root and core READMEs now describe the server-only Codex requirement without mentioning worker placement, since bundlers no longer need to keep extra assets adjacent to the entry point.
+- Core README is synced with the repository README for every release.
+
 ## [0.20.0] - 2025-11-19
 ### ♻️ Gemini Resume Support
 - `@headless-coder-sdk/gemini-adapter` now captures CLI session ids/indexes and forwards `--resume` for every subsequent run, so both repeated thread runs and explicit `resumeThread()` flows continue the same workspace.

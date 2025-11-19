@@ -1,6 +1,6 @@
 {
   "name": "@headless-coder-sdk/examples",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "type": "module",
   "private": true,
   "main": "dist/basic.js",

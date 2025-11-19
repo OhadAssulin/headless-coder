@@ -237,7 +237,7 @@ In this workflow two reviewers (Claude, Codex) analyze the same commit in parall
 
 ## ⚠️ Codex Adapter Runtime
 
-- The Codex adapter forks worker processes via Node’s `child_process` API and **must run on the server**. It is safe to import in build tooling, but gate runtime usage to environments where `process.versions.node` exists.
+- The Codex adapter talks directly to the Codex CLI through Node APIs and **must run on the server**. It is safe to import in build tooling, but gate runtime usage to environments where `process.versions.node` exists.
 - A convenience helper, `createHeadlessCodex`, registers the adapter and returns a coder in one call:
 
   ```ts
@@ -330,7 +330,7 @@ Open an [issue](https://github.com/OhadAssulin/headless-coder-sdk/issues) or sub
 - You can import `createCoder` or helper utilities directly from `@headless-coder-sdk/core` and `@headless-coder-sdk/codex-adapter` without deep `dist/*/src` paths—the `main`/`module` fields now point at those root files.
 - Helper factories (`createHeadlessCodex/Claude/Gemini`) register adapters and return coders in one call, making server-only integrations simpler.
 - `package.json` is exposed via the exports map (`import '@headless-coder-sdk/core/package.json'`) for tooling that needs to inspect versions at runtime.
-- `@headless-coder-sdk/codex-adapter` forks a worker via `fileURLToPath(new URL('./worker.js', import.meta.url))`; keep `dist/worker.js` adjacent when rebundling so that child processes can spawn correctly.
+- `@headless-coder-sdk/codex-adapter` now calls the Codex SDK directly with AbortSignal-based cancellation, so bundlers no longer need to juggle extra worker assets—ensuring the adapter stays server-only is sufficient.
 
 ---
 

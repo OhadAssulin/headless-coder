@@ -1,6 +1,6 @@
 {
   "name": "@headless-coder-sdk/gemini-adapter",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -18,7 +18,7 @@
     "build": "tsup --config tsup.config.ts"
   },
   "peerDependencies": {
-    "@headless-coder-sdk/core": "^0.20.0"
+    "@headless-coder-sdk/core": "^0.21.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
