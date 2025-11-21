@@ -400,7 +400,9 @@ export class ClaudeAdapter implements HeadlessCoder {
   }
 
   private captureSessionId(state: ClaudeThreadState, handle: ThreadHandle, message: SDKMessage): void {
-    const sessionId = (message as any)?.session_id;
+    const sessionId =
+      (message as any)?.session_id ??
+      ((message as any)?.type === 'stream_event' ? (message as any)?.event?.session_id : undefined);
     if (sessionId && sessionId !== state.sessionId) {
       state.sessionId = sessionId;
       state.resume = true;
@@ -413,18 +415,66 @@ function normalizeClaudeStreamMessage(message: any, threadId?: string): CoderStr
   const ts = now();
   const provider: Provider = CODER_NAME;
   const events: CoderStreamEvent[] = [];
-  const typeValue = message?.type ?? message?.label ?? '';
+  const base =
+    message?.type === 'stream_event' && message?.event
+      ? {
+          ...message.event,
+          session_id: message.session_id ?? message.event?.session_id,
+          model: message.model ?? message.event?.model,
+        }
+      : message;
+
+  if (base?.type === 'content_block_delta' && base?.delta?.type === 'text_delta') {
+    return [
+      {
+        type: 'message',
+        provider,
+        role: 'assistant',
+        text: extractClaudeAssistantText(base),
+        delta: true,
+        ts,
+        originalItem: message,
+      },
+    ];
+  }
+
+  if (base?.type === 'content_block_start' && base?.content_block?.type === 'tool_use') {
+    return [
+      {
+        type: 'tool_use',
+        provider,
+        name: base.content_block?.name,
+        callId: base.content_block?.id,
+        args: base.content_block?.input,
+        ts,
+        originalItem: message,
+      },
+    ];
+  }
+
+  if (base?.type === 'message_delta') {
+    if (base?.usage) {
+      events.push({ type: 'usage', provider, stats: base.usage, ts, originalItem: message });
+    }
+    if (events.length) return events;
+  }
+
+  if (base?.type === 'message_stop') {
+    return [{ type: 'done', provider, ts, originalItem: message }];
+  }
+
+  const typeValue = base?.type ?? base?.label ?? '';
   const typeText = typeof typeValue === 'string' ? typeValue : String(typeValue ?? '');
   const typeLower = typeText.toLowerCase();
   const includes = (token: string) => typeLower.includes(token);
 
-  if (typeLower === 'sdkinit' || typeLower === 'system' || message?.session_id) {
+  if (typeLower === 'sdkinit' || typeLower === 'system') {
     return [
       {
         type: 'init',
         provider,
-        threadId: message?.session_id ?? threadId,
-        model: message?.model,
+        threadId: base?.session_id ?? threadId,
+        model: base?.model,
         ts,
         originalItem: message,
       },
@@ -437,7 +487,7 @@ function normalizeClaudeStreamMessage(message: any, threadId?: string): CoderStr
         type: 'message',
         provider,
         role: 'assistant',
-        text: (message as any).text ?? (message as any).content ?? extractClaudeAssistantText(message),
+        text: (base as any).text ?? (base as any).content ?? extractClaudeAssistantText(base),
         delta: true,
         ts,
         originalItem: message,
@@ -451,7 +501,7 @@ function normalizeClaudeStreamMessage(message: any, threadId?: string): CoderStr
         type: 'message',
         provider,
         role: 'assistant',
-        text: extractClaudeAssistantText(message),
+        text: extractClaudeAssistantText(base),
         ts,
         originalItem: message,
       },
@@ -463,9 +513,9 @@ function normalizeClaudeStreamMessage(message: any, threadId?: string): CoderStr
       {
         type: 'tool_use',
         provider,
-        name: (message as any).name ?? (message as any).tool_name ?? (message as any).tool,
-        callId: (message as any).id,
-        args: (message as any).input,
+        name: (base as any).name ?? (base as any).tool_name ?? (base as any).tool,
+        callId: (base as any).id,
+        args: (base as any).input,
         ts,
         originalItem: message,
       },
@@ -477,9 +527,9 @@ function normalizeClaudeStreamMessage(message: any, threadId?: string): CoderStr
       {
         type: 'tool_result',
         provider,
-        name: (message as any).name ?? (message as any).tool_name ?? (message as any).tool,
-        callId: (message as any).tool_use_id ?? (message as any).id,
-        result: (message as any).output,
+        name: (base as any).name ?? (base as any).tool_name ?? (base as any).tool,
+        callId: (base as any).tool_use_id ?? (base as any).id,
+        result: (base as any).output,
         ts,
         originalItem: message,
       },
@@ -491,8 +541,8 @@ function normalizeClaudeStreamMessage(message: any, threadId?: string): CoderStr
       {
         type: 'permission',
         provider,
-        request: (message as any).request,
-        decision: (message as any).decision,
+        request: (base as any).request,
+        decision: (base as any).decision,
         ts,
         originalItem: message,
       },
@@ -500,27 +550,27 @@ function normalizeClaudeStreamMessage(message: any, threadId?: string): CoderStr
   }
 
   if (includes('result')) {
-    if (claudeResultIndicatesError(message)) {
+    if (claudeResultIndicatesError(base)) {
       return [
         {
           type: 'error',
           provider,
-          message: buildClaudeResultErrorMessage(message),
+          message: buildClaudeResultErrorMessage(base),
           ts,
           originalItem: message,
         },
       ];
     }
-    if (message?.usage) {
-      events.push({ type: 'usage', provider, stats: message.usage, ts, originalItem: message });
+    if (base?.usage) {
+      events.push({ type: 'usage', provider, stats: base.usage, ts, originalItem: message });
     }
     events.push({ type: 'done', provider, ts, originalItem: message });
     return events;
   }
 
   if (includes('completed') || includes('final')) {
-    if (message?.usage) {
-      events.push({ type: 'usage', provider, stats: message.usage, ts, originalItem: message });
+    if (base?.usage) {
+      events.push({ type: 'usage', provider, stats: base.usage, ts, originalItem: message });
     }
     events.push({ type: 'done', provider, ts, originalItem: message });
     return events;
